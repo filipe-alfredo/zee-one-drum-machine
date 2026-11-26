@@ -1,0 +1,56 @@
+{
+  "name": "zeeone-drum-machine",
+  "version": "1.0.0",
+  "private": true,
+  "description": "ZeeOne Drum Machine — browser-based 23-track drum sequencer",
+  "type": "module",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "start": "node scripts/serve.mjs",
+    "test": "node --test tests/",
+    "electron": "electron electron/main.cjs",
+    "electron:smoke": "electron electron/main.cjs --smoke",
+    "build": "electron-builder",
+    "build:dir": "electron-builder --dir",
+    "build:win": "electron-builder --win"
+  },
+  "devDependencies": {
+    "electron": "^45.5.0",
+    "electron-builder": "^26.18.0"
+  },
+  "build": {
+    "appId": "com.zeeone.drummachine",
+    "productName": "ZeeOne Drum Machine",
+    "copyright": "Copyright © 2026 ZeeOne",
+    "asar": true,
+    "files": [
+      "index.html",
+      "package.json",
+      "src/**/*",
+      "styles/**/*",
+      "assets/**/*",
+      "electron/**/*"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        },
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
+    "portable": {
+      "artifactName": "ZeeOne-Drum-Machine-Portable-${version}.exe"
+    }
+  }
+}

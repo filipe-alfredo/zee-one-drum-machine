@@ -1,0 +1,20 @@
+/* ================= THEME TOKENS ================= */
+:root {
+      --bg-deep: #0b0b0c;
+      --bg-surface: #161618;
+      --bg-elevated: #1f1f23;
+      --bg-cell: #121215;
+      --bg-cell-alt: #19191e;
+      --bg-cell-hover: #282830;
+      --border-subtle: #26262c;
+      --border-strong: #373740;
+      --text-primary: #f4f4f6;
+      --text-secondary: #9ca3af;
+      --text-muted: #6b7280;
+      --orange-primary: #ff6b00;
+      --orange-bright: #ff8533;
+      --orange-glow: rgba(255, 107, 0, 0.36);
+      --orange-tint: rgba(255, 107, 0, 0.14);
+      --danger: #ef4444;
+      --row-height: 28px;
+    }

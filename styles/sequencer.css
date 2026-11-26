@@ -1,0 +1,355 @@
+/* ================= DRUM GRID & SEQUENCER ================= */
+/* Right Panel: Drum Machine Grid */
+    .drum-panel {
+      flex: 1;
+      background-color: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 7px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .grid-header-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .pattern-meta-pill {
+      font-size: 11px;
+      color: var(--text-secondary);
+      background-color: var(--bg-deep);
+      border: 1px solid var(--border-subtle);
+      padding: 3px 9px;
+      border-radius: 4px;
+    }
+
+    .pattern-meta-pill strong {
+      color: var(--orange-bright);
+    }
+
+    .kit-modal-btn {
+      background-color: var(--bg-deep);
+      border: 1px solid var(--orange-primary);
+      color: var(--orange-bright);
+      font-size: 11px;
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: 5px;
+      cursor: pointer;
+      transition: all 0.14s ease;
+    }
+
+    .kit-modal-btn:hover {
+      background-color: var(--orange-primary);
+      color: #0b0b0c;
+    }
+
+    .tracks-btn {
+      background-color: var(--bg-deep);
+      border: 1px solid var(--border-strong);
+      color: var(--text-primary);
+      font-size: 11px;
+      font-weight: 600;
+      padding: 4px 9px;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+
+    .tracks-btn:hover {
+      border-color: var(--orange-primary);
+      color: var(--orange-bright);
+    }
+
+    /* Sequencer Matrix Viewport */
+    .matrix-viewport {
+      flex: 1;
+      overflow: auto;
+      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      background-color: #0e0e11;
+    }
+
+    .matrix-table {
+      display: inline-flex;
+      flex-direction: column;
+      min-width: 760px;
+      max-width: 100%;
+    }
+
+    .seq-row {
+      display: flex;
+      align-items: stretch;
+      height: var(--row-height);
+    }
+
+    .track-header {
+      width: 248px;
+      min-width: 248px;
+      background-color: var(--bg-surface);
+      border: 1px solid var(--border-strong);
+      border-bottom: none;
+      padding: 0 5px 0 8px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 4px;
+      cursor: pointer;
+      transition: background-color 0.08s, color 0.08s;
+    }
+
+    .seq-row:last-of-type .track-header {
+      border-bottom: 1px solid var(--border-strong);
+    }
+
+    .track-header:hover {
+      background-color: var(--bg-elevated);
+    }
+
+    .track-header.flash-audition {
+      background-color: var(--orange-primary) !important;
+      color: #0b0b0c !important;
+    }
+
+    .track-name-wrap {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 11.5px;
+      flex: 1;
+    }
+
+    .custom-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background-color: var(--orange-primary);
+      display: none;
+      flex-shrink: 0;
+    }
+
+    .track-header.has-sample .custom-dot {
+      display: inline-block;
+    }
+
+    .track-controls {
+      display: flex;
+      align-items: center;
+      gap: 3px;
+      flex-shrink: 0;
+    }
+
+    .track-volume-wrap {
+      display: flex;
+      align-items: center;
+      gap: 3px;
+      background-color: var(--bg-deep);
+      border: 1px solid var(--border-subtle);
+      border-radius: 3px;
+      padding: 0 3px;
+      height: 18px;
+    }
+
+    .track-volume-slider {
+      -webkit-appearance: none;
+      width: 44px;
+      height: 3px;
+      background: var(--bg-elevated);
+      border-radius: 2px;
+      outline: none;
+    }
+
+    .track-volume-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 9px;
+      height: 9px;
+      border-radius: 2px;
+      background: var(--orange-primary);
+      border: 1px solid var(--orange-bright);
+      cursor: pointer;
+    }
+
+    .track-volume-value {
+      width: 24px;
+      font-family: "JetBrains Mono", monospace;
+      font-size: 8.5px;
+      font-weight: 700;
+      color: var(--orange-bright);
+      text-align: right;
+    }
+
+    .track-mini-btn {
+      background-color: var(--bg-deep);
+      border: 1px solid var(--border-strong);
+      color: var(--text-secondary);
+      font-size: 9.5px;
+      font-weight: 700;
+      width: 18px;
+      height: 18px;
+      border-radius: 3px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      opacity: 0.72;
+      transition: all 0.12s;
+    }
+
+    .track-header:hover .track-mini-btn,
+    .track-mini-btn.muted-active,
+    .track-mini-btn.solo-active {
+      opacity: 1;
+    }
+
+    .track-mini-btn:hover {
+      border-color: var(--orange-primary);
+      color: var(--orange-bright);
+    }
+
+    .track-mini-btn.muted-active {
+      background-color: #dc2626;
+      border-color: #dc2626;
+      color: #fff;
+    }
+
+    .track-mini-btn.solo-active {
+      background-color: var(--orange-primary);
+      border-color: var(--orange-bright);
+      color: #0b0b0c;
+    }
+
+    .track-mini-btn.hide-btn:hover {
+      border-color: var(--danger);
+      color: var(--danger);
+    }
+
+    .pads-row {
+      display: flex;
+      flex: 1;
+    }
+
+    .step-pad {
+      flex: 1;
+      min-width: 24px;
+      background-color: var(--bg-cell);
+      border-top: 1px solid var(--border-strong);
+      border-right: 1px solid var(--border-strong);
+      cursor: pointer;
+      position: relative;
+      transition: background-color 0.05s;
+    }
+
+    .seq-row:last-of-type .step-pad {
+      border-bottom: 1px solid var(--border-strong);
+    }
+
+    .step-pad.beat-alt {
+      background-color: var(--bg-cell-alt);
+    }
+
+    .step-pad.beat-divider {
+      border-right: 2px solid #494954;
+    }
+
+    .step-pad:hover {
+      background-color: var(--bg-cell-hover);
+    }
+
+    .step-pad.active {
+      background-color: var(--orange-primary) !important;
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35), 0 0 8px rgba(255, 107, 0, 0.45);
+    }
+
+    .step-pad.playhead::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background-color: rgba(255, 255, 255, 0.18);
+      pointer-events: none;
+    }
+
+    .step-pad.active.playhead {
+      background-color: var(--orange-bright) !important;
+      box-shadow: inset 0 0 8px #ffffff, 0 0 10px var(--orange-bright);
+    }
+
+    .leds-bar {
+      display: flex;
+      margin-left: 248px;
+      padding-top: 8px;
+    }
+
+    .led-cell {
+      flex: 1;
+      min-width: 24px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .led-pip {
+      width: 11px;
+      height: 5px;
+      border-radius: 2px;
+      background-color: #2b2b33;
+      transition: all 0.06s ease;
+    }
+
+    .led-pip.on {
+      background-color: var(--orange-primary);
+      box-shadow: 0 0 8px var(--orange-primary);
+      transform: scaleY(1.3);
+    }
+
+/* Empty Kit State Card */
+    .empty-kit-card {
+      margin: auto;
+      background-color: var(--bg-surface);
+      border: 1px dashed var(--border-strong);
+      border-radius: 10px;
+      padding: 28px 32px;
+      max-width: 500px;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .empty-kit-card h3 {
+      font-family: "Orbitron", sans-serif;
+      font-size: 14px;
+      color: var(--text-primary);
+      letter-spacing: 0.6px;
+    }
+
+    .empty-kit-card p {
+      color: var(--text-secondary);
+      line-height: 1.5;
+      font-size: 12px;
+    }
+
+    .empty-kit-actions {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 8px;
+      margin-top: 4px;
+    }
+
+    @media (max-width: 860px) {
+      .track-header {
+        width: 215px;
+        min-width: 215px;
+      }
+      .leds-bar {
+        margin-left: 215px;
+      }
+    }

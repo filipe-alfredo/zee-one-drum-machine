@@ -1,0 +1,20 @@
+# Dev tooling only (Electron/build packages); the renderer has no runtime deps
+node_modules/
+
+# Editor / OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Logs and temporary files
+*.log
+*.tmp
+
+# Imported drum kits are user content, not source code.
+# The wizard writes normalized kits here at runtime; never commit them.
+assets/drumkits/**
+
+# Electron packaging output
+dist/
+out/
