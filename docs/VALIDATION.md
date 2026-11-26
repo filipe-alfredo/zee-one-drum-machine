@@ -112,7 +112,7 @@ The Node tests cover fixed-preset step counts and timing formulas, the short tim
 
 ## Electron desktop coverage
 
-- `npm run electron:smoke` starts `electron/main.cjs`, serves the ES Modules from a random loopback port, loads the renderer and exits cleanly.
+- `npm run electron:smoke` starts `electron/main.cjs`, serves the ES Modules from a random loopback port, loads the renderer and exits cleanly. The main process calls `Menu.setApplicationMenu(null)` before creating the window, so no native menu bar or menu buttons are drawn.
 - The packaged renderer was smoke-tested with `npx electron dist/win-unpacked/resources/app.asar --smoke`, confirming the built app loads. A direct launch of the freshly rebuilt unsigned `.exe` is blocked by this machine's Application Control policy, so the source Electron binary was used to load the packaged archive instead.
 - `npm run build:win` produced `dist/ZeeOne Drum Machine Setup 1.0.0.exe` and `dist/ZeeOne-Drum-Machine-Portable-1.0.0.exe`. No signing certificate is configured, so Windows signing is skipped.
 - `electron/preload.cjs` exposes only `chooseSavePath()` and `writeFile()`; the chosen path is kept in a main-process request map and never returned to the renderer.

@@ -6,7 +6,7 @@
  * itself keeps using plain browser APIs plus the narrow save-file bridge in
  * preload.cjs.
  */
-const { app, BrowserWindow, dialog, ipcMain } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, Menu } = require('electron');
 const http = require('node:http');
 const fs = require('node:fs/promises');
 const path = require('node:path');
@@ -148,6 +148,8 @@ async function createWindow(url) {
 }
 
 app.whenReady().then(async () => {
+  // The renderer provides its own toolbar and menus; do not draw a native menu bar.
+  Menu.setApplicationMenu(null);
   try {
     staticServer = await createStaticServer();
     const { port } = staticServer.address();
