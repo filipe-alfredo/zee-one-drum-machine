@@ -22,7 +22,7 @@ If `AudioContext`/`webkitAudioContext` is unavailable, `ensureStarted()` throws 
 
 - `clampVolume()` in `utils/helpers.js` is the single normalization rule: non-finite values use the fallback, other values are clamped to 0–1. `mixer.js` exposes `getGlobalVolume()` / `getChannelVolume()` so the pure mixer rules stay reusable in Node tests.
 - The toolbar slider and numeric field are 0–100 %; the kit dialog has one `Vol` slider per row with a live percentage readout. Both are persisted with the workspace.
-- Master changes call `AudioEngine.setMasterVolume()`, which updates the current gain node if the context is already running. Track changes are read by `Sequencer.scheduleStep()` at the moment a note is scheduled; no node graph rebuild is needed.
+- Master changes call `AudioEngine.setMasterVolume()`, which updates the current gain node if the context is already running. Track changes are read by `Sequencer.scheduleEvent()` at the moment a note is scheduled; no node graph rebuild is needed.
 - Volume does not affect mute/solo or visibility: a hidden track is never scheduled, and solo still takes precedence over mute for audible rows.
 
 ## Instrument synthesis
@@ -45,7 +45,7 @@ Common patterns are combined in the switch statement (kick variants, snare varia
 4. **Use Synth** calls `state.removeTrackSample()` and `kitManager.removeSample(trackId)`, restoring the built-in synth for that legacy instrument.
 5. `clear()` / “Unload Custom Samples” empties the map, restores the default 23 synth tracks, and clears the workspace `kits` section.
 
-The wizard's ▶ Play preview uses the same `ensureStarted()` + `decodeAudioData()` path. Decoded buffers and raw bytes are kept in memory while the wizard is open and are applied to the live kit on **Import Kit**.
+The wizard's ▶ Play / ⏸ Pause preview uses the same `ensureStarted()` + `decodeAudioData()` path. `AudioEngine.play()` returns a short-lived handle for every note; `stopAudition(handle)` fades that one gain to zero and releases it, so preview buttons can interrupt long custom samples without stopping sequencer notes. A handle notifies `onEnded` after its buffer (or the short synth envelope) finishes, which restores the ▶ label automatically. Decoded buffers and raw bytes are kept in memory while the wizard is open and are applied to the live kit on **Import Kit**.
 
 `AudioBuffer`s themselves are never serialized. `src/kits/sample-data.js` converts the original bytes to/from base64 data URLs, so `app.restoreKitSamples()` can rebuild the buffers after **Open Workspace / Open Last Workspace** by decoding `kits.samples[].data` and rekeying them by sample/track id. Samples that cannot be decoded are skipped with a summary toast.
 
@@ -54,10 +54,10 @@ The wizard's ▶ Play preview uses the same `ensureStarted()` + `decodeAudioData
 `Sequencer` uses `SchedulerClock` (`src/sequencer/clock.js`):
 
 - `setInterval` fires every **25 ms** only to wake the scheduler; it never triggers sound directly.
-- Each tick schedules all steps whose AudioContext time is within **0.12 s** ahead (`scheduleAheadSec`).
-- The first step starts **0.105 s** after `start()` (`startDelaySec`), leaving headroom for scheduling.
-- Step duration comes from the active source: `getStepDurationSec(pattern.bpm, pattern.timeSignature)` for the active pattern, or `(60 / arrangement.bpm) / 4` (16 steps per bar) for the bottom arrangement when Loop Mode is on.
-- For each active step, `scheduleStep()` walks `state.tracks`, reads `pattern.grid[track.patternKey]`, applies **visibility** first, then mute/solo rules, reads the track gain, clamps the audio time to `currentTime`, and calls `audioEngine.play(track.id, time, buffer, track.legacyInstrumentId, trackVolume)`. Tracks without a buffer or a legacy instrument are skipped.
+- Each tick schedules all events whose AudioContext time is within **0.12 s** ahead (`scheduleAheadSec`), then advances to the next repeat of the cycle.
+- The first event starts **0.105 s** after `start()` (`startDelaySec`), leaving headroom for scheduling.
+- Events come from the active source. The active pattern and the picker preview emit 16th steps with `(60 / bpm) / 4` duration. The loop emits one event per step of every painted block: a beat on row *r* lasts `60 / row.bpm` seconds and a step is one quarter of that beat, so an 8/4 row uses all 32 steps and rows at different BPMs can drift.
+- For each event, `scheduleEvent()` walks `state.tracks`, reads `pattern.grid[track.patternKey]` at `event.stepIndex`, applies **visibility** first, then mute/solo rules, reads the track gain, clamps the audio time to `currentTime`, and calls `audioEngine.play(track.id, time, buffer, track.legacyInstrumentId, trackVolume)`. Tracks without a buffer or a legacy instrument are skipped.
 - `isChannelAudible()` checks `visibleTracks[trackId] === false` before evaluating solo/mute, so a hidden track stays silent even if it is soloed.
 
 A `setTimeout` is used only to align the visual playhead with the scheduled audio time. A `playbackGeneration` counter discards visual updates from a previous playback after Stop/Start, and `Sequencer.start()` re-checks `isPlaying` after the asynchronous `AudioContext` setup so rapid double-clicks cannot create two timers.
@@ -66,10 +66,10 @@ A `setTimeout` is used only to align the visual playhead with the scheduled audi
 
 `src/audio/wav-export.js` uses one shared `OfflineAudioContext` renderer for both exports:
 
-- stereo, 44.1 kHz, duration = `steps × stepDuration + 1 s` tail;
-- a `notesAtStep(step)` source supplies pattern/step pairs: the active pattern for **Export Active Pattern**, or `getArrangementNotesAtStep()` for **Export Loop Arrangement**;
+- stereo, 44.1 kHz, duration = `cycle events + 1 s` tail;
+- an absolute `events[]` array supplies `{ time, stepIndex, pattern }`: 16th steps for **Export Active Pattern**, or `getArrangementEvents()` for **Export Loop Arrangement** (every painted block at its row BPM in one cycle);
 - the same master gain (from `getGlobalVolume(workspace)`), per-track gain (from `getChannelVolume()`), visibility, and mute/solo rules as live playback, using the runtime `tracks` and buffers keyed by track id;
-- the resulting `AudioBuffer` is encoded to 16-bit PCM WAV (`encodeWavBlob()`). Filenames are `zeeone_<pattern>_<bpm>bpm.wav` and `zeeone_loop_<bars>bars_<bpm>bpm.wav`.
+- the resulting `AudioBuffer` is encoded to 16-bit PCM WAV (`encodeWavBlob()`). Filenames are `zeeone_<pattern>_<bpm>bpm.wav` and `zeeone_loop_<rows>rows_<beats>beats.wav`, for example `zeeone_loop_2rows_5beats.wav`.
 
 `defaultTracks()` is only a fallback for the 23 legacy instruments when no runtime tracks are supplied (for example in unit tests).
 
@@ -79,6 +79,7 @@ Export errors (missing pattern/arrangement, unsupported `OfflineAudioContext`, d
 
 - Solo takes precedence over mute; visibility takes precedence over both: hidden rows never sound.
 - Note starts are not shifted by per-track or global timing controls.
+- Loop rows with different BPMs intentionally drift: each row converts its painted timeline beats with its own tempo instead of being quantised to one global clock.
 - Audio times above/below timing boundaries are clamped to `currentTime` at scheduling time, so a very late step may play immediately rather than in the past.
 - Only one sample per track is stored; assigning a new file replaces the old one.
 - There is no pan or effects chain; mixing is visibility, mute/solo, per-track gain, and master gain.

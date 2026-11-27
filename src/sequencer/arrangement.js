@@ -1,277 +1,386 @@
-import { clamp, clampBpm, createId } from '../utils/helpers.js';
+import { clampBpm, createId } from '../utils/helpers.js';
 import { getStepCountForSig } from './pattern.js';
 
 /**
- * Bottom-of-screen pattern arranger, in the style of a music-workstation
- * playlist. The timeline is a fixed 16th-note grid (16 steps per bar) running
- * at its own BPM. Each lane holds pattern blocks; a block repeats its pattern
- * once per arrangement bar, mapping the pattern's own steps proportionally
- * into the 16 timeline steps. Patterns therefore stay short and reusable.
+ * Bottom-of-screen loop arranger. Patterns are vertical rows; the horizontal
+ * timeline is measured in quarter-note beats and starts with 32 columns.
+ * Painting a cell places one complete occurrence of that row's pattern: a 4/4
+ * pattern covers clicked beat + 3, a 2/4 pattern covers clicked beat + 1, and
+ * a 12/4 pattern covers clicked beat + 11. Rows can overlap and each row has
+ * its own BPM, so the same column can trigger several patterns together.
  */
-export const ARRANGEMENT_STEPS_PER_BAR = 16;
-export const MIN_LOOP_BARS = 1;
-export const MAX_LOOP_BARS = 32;
-export const DEFAULT_LOOP_BARS = 8;
-export const MAX_LANES = 8;
-export const MIN_BLOCK_BARS = 1;
-export const MAX_BLOCK_BARS = 16;
-export const MAX_LOOP_STEPS = 512;
+export const STEPS_PER_BEAT = 4;
+export const DEFAULT_BPM = 100;
+export const DEFAULT_TIMELINE_BEATS = 32;
+export const MAX_TIMELINE_BEATS = 512;
+export const MAX_ROWS = 64;
+export const MAX_BLOCKS = 512;
+export const MAX_LOOP_EVENTS = 20000;
 
 export function createDefaultArrangement() {
   return {
     enabled: false,
-    bpm: 100,
-    loopBars: DEFAULT_LOOP_BARS,
-    lanes: [
-      { id: 'lane_1', name: 'Loop 1', blocks: [] },
-      { id: 'lane_2', name: 'Loop 2', blocks: [] },
-      { id: 'lane_3', name: 'Loop 3', blocks: [] },
-      { id: 'lane_4', name: 'Loop 4', blocks: [] },
-    ],
+    timelineBeats: DEFAULT_TIMELINE_BEATS,
+    rows: [],
   };
 }
 
 function clampInteger(value, min, max, fallback) {
   const parsed = Number.parseInt(value, 10);
   if (!Number.isFinite(parsed)) return fallback;
-  return clamp(parsed, min, max);
+  return Math.min(Math.max(parsed, min), max);
 }
 
-function blockFits(lane, startBar, lengthBars, ignoreId = null) {
-  const end = startBar + lengthBars;
-  return !lane.blocks.some(block => {
-    if (block.id === ignoreId) return false;
-    return startBar < block.startBar + block.lengthBars && block.startBar < end;
-  });
+export function getBeatsForPattern(pattern) {
+  const steps = Math.max(STEPS_PER_BEAT, getStepCountForSig(pattern && pattern.timeSignature));
+  return steps / STEPS_PER_BEAT;
+}
+
+export function getBlockDurationBeats(pattern) {
+  return Math.max(1, Math.round(getBeatsForPattern(pattern)));
 }
 
 /**
- * Validate a persisted arrangement. Unknown pattern ids are dropped, ids are
- * de-duplicated, blocks are trimmed to the loop length, and overlaps inside a
- * lane are resolved by keeping the block that starts first.
+ * Legacy data is migrated conservatively:
+ * - `sequence[]` entries become painted blocks on their own pattern rows,
+ *   laid out back-to-back in beats, with the old global BPM copied per row;
+ * - `lanes[].blocks[]` use their saved `startBar` beat grid instead.
+ * Unknown patterns are dropped; duplicate ids are regenerated.
  */
 export function normalizeArrangement(raw, patterns = []) {
   const base = createDefaultArrangement();
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return base;
 
-  const patternIds = new Set(
-    (Array.isArray(patterns) ? patterns : []).map(pattern => pattern.id),
-  );
-  const loopBars = clampInteger(raw.loopBars, MIN_LOOP_BARS, MAX_LOOP_BARS, DEFAULT_LOOP_BARS);
-  const seenLaneIds = new Set();
+  const patternList = Array.isArray(patterns) ? patterns : [];
+  const patternById = new Map(patternList.map(pattern => [pattern.id, pattern]));
+  const seenRowIds = new Set();
   const seenBlockIds = new Set();
-  const lanes = [];
+  const rows = [];
+  const rowByPatternId = new Map();
 
-  for (const rawLane of (Array.isArray(raw.lanes) ? raw.lanes : []).slice(0, MAX_LANES)) {
-    if (!rawLane || typeof rawLane !== 'object') continue;
-    let laneId = typeof rawLane.id === 'string' && rawLane.id ? rawLane.id : createId('lane');
-    while (seenLaneIds.has(laneId)) laneId = createId('lane');
-    seenLaneIds.add(laneId);
-
-    const lane = {
-      id: laneId,
-      name: String(rawLane.name || `Loop ${lanes.length + 1}`).slice(0, 80),
+  const getRow = (patternId, fallbackBpm) => {
+    if (!patternById.has(patternId)) return null;
+    if (rowByPatternId.has(patternId)) return rowByPatternId.get(patternId);
+    if (rows.length >= MAX_ROWS) return null;
+    let id = createId('row');
+    while (seenRowIds.has(id)) id = createId('row');
+    const row = {
+      id,
+      patternId,
+      bpm: clampBpm(fallbackBpm),
       blocks: [],
     };
-
-    const rawBlocks = Array.isArray(rawLane.blocks) ? rawLane.blocks.slice().sort((a, b) => {
-      const left = Number(a && a.startBar) || 0;
-      const right = Number(b && b.startBar) || 0;
-      return left - right;
-    }) : [];
-
-    for (const rawBlock of rawBlocks) {
-      if (!rawBlock || typeof rawBlock !== 'object') continue;
-      if (!patternIds.has(rawBlock.patternId)) continue;
-
-      let blockId = typeof rawBlock.id === 'string' && rawBlock.id ? rawBlock.id : createId('blk');
-      while (seenBlockIds.has(blockId)) blockId = createId('blk');
-      seenBlockIds.add(blockId);
-
-      const startBar = clampInteger(rawBlock.startBar, 0, loopBars - 1, 0);
-      const maxLength = Math.min(MAX_BLOCK_BARS, loopBars - startBar);
-      const lengthBars = clampInteger(rawBlock.lengthBars, MIN_BLOCK_BARS, maxLength, 1);
-      const block = { id: blockId, patternId: rawBlock.patternId, startBar, lengthBars };
-      if (blockFits(lane, startBar, lengthBars)) lane.blocks.push(block);
-    }
-
-    lanes.push(lane);
-  }
-
-  return {
-    enabled: Boolean(raw.enabled),
-    bpm: clampBpm(raw.bpm),
-    loopBars,
-    lanes: lanes.length > 0 ? lanes : base.lanes,
+    seenRowIds.add(id);
+    rows.push(row);
+    rowByPatternId.set(patternId, row);
+    return row;
   };
-}
 
-export function getArrangementSteps(arrangement) {
-  const bars = clampInteger(arrangement && arrangement.loopBars, MIN_LOOP_BARS, MAX_LOOP_BARS, DEFAULT_LOOP_BARS);
-  return Math.min(MAX_LOOP_STEPS, bars * ARRANGEMENT_STEPS_PER_BAR);
-}
+  const addBlock = (row, start, beats, rawId) => {
+    if (!row || rows.length === 0 || row.blocks.length >= MAX_BLOCKS) return false;
+    let id = typeof rawId === 'string' && rawId ? rawId : createId('blk');
+    while (seenBlockIds.has(id)) id = createId('blk');
+    const block = {
+      id,
+      start: Math.max(0, Math.round(Number(start) || 0)),
+      beats: Math.max(1, Math.round(Number(beats) || getBlockDurationBeats(patternById.get(row.patternId)))),
+    };
+    seenBlockIds.add(id);
+    row.blocks.push(block);
+    return true;
+  };
 
-export function getArrangementStepDuration(arrangement) {
-  const bpm = clampBpm(arrangement ? arrangement.bpm : 100);
-  return (60 / bpm) / 4;
-}
-
-export function getArrangementDurationSec(arrangement) {
-  return getArrangementSteps(arrangement) * getArrangementStepDuration(arrangement);
-}
-
-export function getArrangementLane(arrangement, laneId) {
-  if (!arrangement || !Array.isArray(arrangement.lanes)) return null;
-  return arrangement.lanes.find(lane => lane.id === laneId) || null;
-}
-
-export function getArrangementBlock(arrangement, blockId) {
-  if (!arrangement || !Array.isArray(arrangement.lanes)) return null;
-  for (const lane of arrangement.lanes) {
-    const block = lane.blocks.find(item => item.id === blockId);
-    if (block) return { lane, block };
+  if (Array.isArray(raw.rows)) {
+    for (const savedRow of raw.rows) {
+      if (!savedRow || !patternById.has(savedRow.patternId) || rows.length >= MAX_ROWS) continue;
+      let id = typeof savedRow.id === 'string' && savedRow.id ? savedRow.id : createId('row');
+      while (seenRowIds.has(id)) id = createId('row');
+      const row = { id, patternId: savedRow.patternId, bpm: clampBpm(savedRow.bpm), blocks: [] };
+      for (const savedBlock of Array.isArray(savedRow.blocks) ? savedRow.blocks : []) {
+        if (!savedBlock || row.blocks.length >= MAX_BLOCKS) continue;
+        let blockId = typeof savedBlock.id === 'string' && savedBlock.id ? savedBlock.id : createId('blk');
+        while (seenBlockIds.has(blockId)) blockId = createId('blk');
+        const beats = clampInteger(
+          savedBlock.beats,
+          1,
+          getBlockDurationBeats(patternById.get(row.patternId)),
+          1,
+        );
+        row.blocks.push({
+          id: blockId,
+          start: clampInteger(savedBlock.start, 0, MAX_TIMELINE_BEATS - beats, 0),
+          beats,
+        });
+        seenBlockIds.add(blockId);
+      }
+      seenRowIds.add(id);
+      rows.push(row);
+      rowByPatternId.set(row.patternId, row);
+    }
+  } else if (Array.isArray(raw.sequence)) {
+    let cursor = 0;
+    for (const entry of raw.sequence) {
+      if (!entry || !patternById.has(entry.patternId)) continue;
+      const beats = getBlockDurationBeats(patternById.get(entry.patternId));
+      const row = getRow(entry.patternId, raw.bpm);
+      if (!addBlock(row, cursor, beats, entry.id)) break;
+      cursor += beats;
+    }
+  } else if (Array.isArray(raw.lanes)) {
+    for (const lane of raw.lanes) {
+      for (const block of Array.isArray(lane && lane.blocks) ? lane.blocks : []) {
+        if (!block || !patternById.has(block.patternId)) continue;
+        const beats = getBlockDurationBeats(patternById.get(block.patternId));
+        const start = Math.round(Number(block.startBar) || 0);
+        const row = getRow(block.patternId, raw.bpm);
+        addBlock(row, start, beats, block.id);
+      }
+    }
   }
-  return null;
+
+  const maxStart = rows.reduce((max, row) => row.blocks.reduce(
+    (rowMax, block) => Math.max(rowMax, block.start + block.beats),
+    max,
+  ), 0);
+  const timelineBeats = clampInteger(
+    raw.timelineBeats,
+    DEFAULT_TIMELINE_BEATS,
+    MAX_TIMELINE_BEATS,
+    Math.max(DEFAULT_TIMELINE_BEATS, Math.ceil(maxStart / 8) * 8),
+  );
+
+  return { enabled: Boolean(raw.enabled), timelineBeats, rows };
+}
+
+export function getTimelineBeats(arrangement) {
+  return clampInteger(
+    arrangement && arrangement.timelineBeats,
+    DEFAULT_TIMELINE_BEATS,
+    MAX_TIMELINE_BEATS,
+    DEFAULT_TIMELINE_BEATS,
+  );
+}
+
+/** Timeline extends in 8-beat pages when a block reaches the right edge. */
+export function ensureTimelineBeats(arrangement, requiredBeats) {
+  if (!arrangement) return getTimelineBeats(arrangement);
+  const needed = Math.ceil((Math.max(0, requiredBeats) + 1) / 8) * 8;
+  const next = clampInteger(
+    Math.max(getTimelineBeats(arrangement), needed),
+    DEFAULT_TIMELINE_BEATS,
+    MAX_TIMELINE_BEATS,
+    DEFAULT_TIMELINE_BEATS,
+  );
+  if (next !== arrangement.timelineBeats) {
+    arrangement.timelineBeats = next;
+    return true;
+  }
+  return false;
+}
+
+export function countArrangementRows(arrangement) {
+  return arrangement && Array.isArray(arrangement.rows) ? arrangement.rows.length : 0;
 }
 
 export function countArrangementBlocks(arrangement) {
-  if (!arrangement || !Array.isArray(arrangement.lanes)) return 0;
-  return arrangement.lanes.reduce((sum, lane) => sum + lane.blocks.length, 0);
+  if (!arrangement || !Array.isArray(arrangement.rows)) return 0;
+  return arrangement.rows.reduce((total, row) => total + (Array.isArray(row.blocks) ? row.blocks.length : 0), 0);
 }
 
-export function addArrangementLane(arrangement) {
-  if (!arrangement || !Array.isArray(arrangement.lanes) || arrangement.lanes.length >= MAX_LANES) return null;
-  const lane = {
-    id: createId('lane'),
-    name: `Loop ${arrangement.lanes.length + 1}`,
-    blocks: [],
-  };
-  arrangement.lanes.push(lane);
-  return lane;
+export function getArrangementRow(arrangement, rowId) {
+  if (!arrangement || !Array.isArray(arrangement.rows)) return null;
+  return arrangement.rows.find(row => row.id === rowId) || null;
 }
 
-export function removeArrangementLane(arrangement, laneId) {
-  if (!arrangement || arrangement.lanes.length <= 1) return false;
-  const before = arrangement.lanes.length;
-  arrangement.lanes = arrangement.lanes.filter(lane => lane.id !== laneId);
-  return arrangement.lanes.length < before;
+export function addArrangementRow(arrangement, patternId, patterns = [], bpm) {
+  if (!arrangement || !Array.isArray(arrangement.rows)) return null;
+  const pattern = (Array.isArray(patterns) ? patterns : []).find(item => item.id === patternId);
+  if (!pattern) return null;
+  if (arrangement.rows.length >= MAX_ROWS) return null;
+  let id = createId('row');
+  while (arrangement.rows.some(row => row.id === id)) id = createId('row');
+  const row = { id, patternId, bpm: clampBpm(bpm === undefined ? pattern.bpm : bpm), blocks: [] };
+  arrangement.rows.push(row);
+  return row;
 }
 
-export function addArrangementBlock(arrangement, { laneId, patternId, startBar, lengthBars }) {
-  const lane = getArrangementLane(arrangement, laneId);
-  if (!lane || !patternId) return null;
-
-  const bar = clampInteger(startBar, 0, arrangement.loopBars - 1, 0);
-  const maxLength = Math.min(MAX_BLOCK_BARS, arrangement.loopBars - bar);
-  const length = clampInteger(lengthBars, MIN_BLOCK_BARS, maxLength, 1);
-  if (!blockFits(lane, bar, length)) return null;
-
-  const block = { id: createId('blk'), patternId, startBar: bar, lengthBars: length };
-  lane.blocks.push(block);
-  return block;
+export function removeArrangementRow(arrangement, rowId) {
+  if (!arrangement || !Array.isArray(arrangement.rows)) return false;
+  const before = arrangement.rows.length;
+  arrangement.rows = arrangement.rows.filter(row => row.id !== rowId);
+  return arrangement.rows.length < before;
 }
 
-export function moveArrangementBlock(arrangement, blockId, laneId, startBar) {
-  const found = getArrangementBlock(arrangement, blockId);
-  const target = getArrangementLane(arrangement, laneId);
-  if (!found || !target) return false;
-
-  const bar = clampInteger(startBar, 0, arrangement.loopBars - 1, found.block.startBar);
-  const targetLaneBlocks = found.lane.id === target.id
-    ? found.lane.blocks.filter(block => block.id !== blockId)
-    : target.blocks;
-  const candidate = { ...found.block, startBar: bar };
-  if (!blockFits({ blocks: targetLaneBlocks }, bar, candidate.lengthBars, blockId)) return false;
-  if (found.lane.id !== target.id) {
-    found.lane.blocks = found.lane.blocks.filter(block => block.id !== blockId);
-    target.blocks.push(candidate);
-  } else {
-    found.block.startBar = bar;
-  }
-  return true;
+export function setArrangementRowBpm(arrangement, rowId, value) {
+  const row = getArrangementRow(arrangement, rowId);
+  if (!row) return null;
+  row.bpm = clampBpm(value);
+  return row.bpm;
 }
 
-export function removeArrangementBlock(arrangement, blockId) {
-  const found = getArrangementBlock(arrangement, blockId);
-  if (!found) return false;
-  found.lane.blocks = found.lane.blocks.filter(block => block.id !== blockId);
-  return true;
+export function removePatternFromArrangement(arrangement, patternId) {
+  if (!arrangement || !Array.isArray(arrangement.rows)) return false;
+  const before = arrangement.rows.length;
+  arrangement.rows = arrangement.rows.filter(row => row.patternId !== patternId);
+  return arrangement.rows.length < before;
 }
 
 export function clearArrangementBlocks(arrangement) {
-  if (!arrangement || !Array.isArray(arrangement.lanes)) return false;
+  if (!arrangement || !Array.isArray(arrangement.rows)) return false;
   let changed = false;
-  for (const lane of arrangement.lanes) {
-    if (lane.blocks.length === 0) continue;
-    lane.blocks = [];
+  for (const row of arrangement.rows) {
+    if (!Array.isArray(row.blocks) || row.blocks.length === 0) continue;
+    row.blocks = [];
     changed = true;
   }
   return changed;
 }
 
-export function setArrangementBpm(arrangement, value) {
-  if (!arrangement) return 100;
-  arrangement.bpm = clampBpm(value);
-  return arrangement.bpm;
+export function clearArrangementRows(arrangement) {
+  if (!arrangement || !Array.isArray(arrangement.rows) || arrangement.rows.length === 0) return false;
+  arrangement.rows = [];
+  arrangement.timelineBeats = DEFAULT_TIMELINE_BEATS;
+  return true;
 }
 
-export function setLoopBars(arrangement, value) {
-  if (!arrangement) return DEFAULT_LOOP_BARS;
-  arrangement.loopBars = clampInteger(value, MIN_LOOP_BARS, MAX_LOOP_BARS, DEFAULT_LOOP_BARS);
-  for (const lane of arrangement.lanes) {
-    lane.blocks = lane.blocks
-      .filter(block => block.startBar < arrangement.loopBars)
-      .map(block => ({
-        ...block,
-        lengthBars: Math.min(block.lengthBars, arrangement.loopBars - block.startBar),
-      }));
-  }
-  return arrangement.loopBars;
-}
-
-export function removePatternFromArrangement(arrangement, patternId) {
-  if (!arrangement || !Array.isArray(arrangement.lanes)) return false;
-  let changed = false;
-  for (const lane of arrangement.lanes) {
-    const next = lane.blocks.filter(block => block.patternId !== patternId);
-    if (next.length !== lane.blocks.length) {
-      lane.blocks = next;
-      changed = true;
-    }
-  }
-  return changed;
+/** Find the block occupying one beat in a row. */
+export function getBlockAtBeat(row, beat) {
+  if (!row || !Array.isArray(row.blocks)) return null;
+  return row.blocks.find(block => beat >= block.start && beat < block.start + block.beats) || null;
 }
 
 /**
- * Notes scheduled at one absolute arrangement step. A block that spans N bars
- * plays its pattern once in each bar; the pattern's own step count is mapped
- * proportionally onto the 16 timeline steps.
+ * Paint one complete pattern occurrence. Clicking an occupied beat removes the
+ * whole block. Each row keeps at most one block per pattern occurrence.
  */
-export function getArrangementNotesAtStep(arrangement, patterns, stepIndex) {
-  if (!arrangement || !Array.isArray(arrangement.lanes)) return [];
-  const totalSteps = getArrangementSteps(arrangement);
-  if (stepIndex < 0 || stepIndex >= totalSteps) return [];
+export function toggleArrangementBlock(arrangement, rowId, beat, patterns = []) {
+  const row = getArrangementRow(arrangement, rowId);
+  if (!row) return null;
+  const pattern = (Array.isArray(patterns) ? patterns : []).find(item => item.id === row.patternId);
+  if (!pattern) return null;
 
-  const bar = Math.floor(stepIndex / ARRANGEMENT_STEPS_PER_BAR);
-  const stepInBar = stepIndex % ARRANGEMENT_STEPS_PER_BAR;
+  const start = Math.max(0, Math.round(Number(beat) || 0));
+  const existing = getBlockAtBeat(row, start);
+  if (existing) {
+    row.blocks = row.blocks.filter(block => block.id !== existing.id);
+    return { action: 'removed', block: existing };
+  }
+  if (!Array.isArray(row.blocks)) row.blocks = [];
+  if (row.blocks.length >= MAX_BLOCKS) return null;
+
+  const beats = getBlockDurationBeats(pattern);
+  let id = createId('blk');
+  while (row.blocks.some(block => block.id === id)) id = createId('blk');
+  const block = { id, start, beats };
+  row.blocks.push(block);
+  ensureTimelineBeats(arrangement, start + beats);
+  return { action: 'added', block };
+}
+
+/** Last painted beat of the loop, or -1 when the loop is empty. */
+export function getArrangementEndBeat(arrangement) {
+  if (!arrangement || !Array.isArray(arrangement.rows)) return -1;
+  let end = -1;
+  for (const row of arrangement.rows) {
+    for (const block of Array.isArray(row.blocks) ? row.blocks : []) {
+      end = Math.max(end, block.start + block.beats - 1);
+    }
+  }
+  return end;
+}
+
+export function getArrangementBeats(arrangement) {
+  return getArrangementEndBeat(arrangement) + 1;
+}
+
+/**
+ * Absolute loop events in seconds. Each row runs at its own BPM: one beat is
+ * 60/bpm seconds and each pattern step is a quarter of that beat. A block
+ * starts at its timeline beat converted to that row's tempo, which deliberately
+ * allows rows with different BPMs to drift relative to one another.
+ */
+export function getArrangementEvents(arrangement, patterns = []) {
+  if (!arrangement || !Array.isArray(arrangement.rows)) return [];
   const patternById = new Map(
     (Array.isArray(patterns) ? patterns : []).map(pattern => [pattern.id, pattern]),
   );
-  const notes = [];
+  const events = [];
+  for (const row of arrangement.rows) {
+    const pattern = patternById.get(row.patternId);
+    if (!pattern || !Array.isArray(row.blocks)) continue;
+    const beatDuration = 60 / clampBpm(row.bpm);
+    const stepDuration = beatDuration / STEPS_PER_BEAT;
+    const patternSteps = Math.max(STEPS_PER_BEAT, getStepCountForSig(pattern.timeSignature));
+    for (const block of row.blocks) {
+      const blockStart = block.start * beatDuration;
+      for (let step = 0; step < patternSteps && events.length < MAX_LOOP_EVENTS; step += 1) {
+        events.push({
+          source: 'loop',
+          bpm: row.bpm,
+          time: blockStart + step * stepDuration,
+          stepIndex: step,
+          pattern,
+          patternId: row.patternId,
+          rowId: row.id,
+          blockId: block.id,
+          beat: block.start,
+        });
+      }
+      if (events.length >= MAX_LOOP_EVENTS) break;
+    }
+    if (events.length >= MAX_LOOP_EVENTS) break;
+  }
+  events.sort((left, right) => left.time - right.time);
+  return events;
+}
 
-  for (const lane of arrangement.lanes) {
-    for (const block of lane.blocks) {
-      if (bar < block.startBar || bar >= block.startBar + block.lengthBars) continue;
-      const pattern = patternById.get(block.patternId);
-      if (!pattern) continue;
-      const patternSteps = Math.max(1, getStepCountForSig(pattern.timeSignature));
-      const localStep = Math.min(
-        patternSteps - 1,
-        Math.floor(stepInBar * patternSteps / ARRANGEMENT_STEPS_PER_BAR),
-      );
-      notes.push({ pattern, patternId: block.patternId, stepIndex: localStep, blockId: block.id });
+/** Approximate loop length in seconds (the latest scheduled event tail). */
+export function getArrangementDurationSec(arrangement, patterns = []) {
+  const events = getArrangementEvents(arrangement, patterns);
+  if (events.length === 0) return 0;
+  const last = events[events.length - 1];
+  return last.time + (60 / clampBpm(last.bpm)) / STEPS_PER_BEAT;
+}
+
+/** Event times for the playhead: which block is active at one elapsed second. */
+export function getArrangementRowsAtTime(arrangement, patterns, timeSec) {
+  if (!arrangement || !Array.isArray(arrangement.rows) || !Number.isFinite(timeSec)) return [];
+  const patternById = new Map(
+    (Array.isArray(patterns) ? patterns : []).map(pattern => [pattern.id, pattern]),
+  );
+  const current = [];
+  for (const row of arrangement.rows) {
+    const pattern = patternById.get(row.patternId);
+    if (!pattern || !Array.isArray(row.blocks)) continue;
+    const beatDuration = 60 / clampBpm(row.bpm);
+    for (const block of row.blocks) {
+      const start = block.start * beatDuration;
+      const end = start + block.beats * beatDuration;
+      if (timeSec >= start && timeSec < end) {
+        current.push({
+          rowId: row.id,
+          blockId: block.id,
+          patternId: row.patternId,
+          beat: block.start,
+        });
+        break;
+      }
     }
   }
+  return current;
+}
 
-  return notes;
+/**
+ * Compatibility helper for the playhead. The old clock counted 16th steps;
+ * map an absolute step back to the beat that is currently active.
+ */
+export function getArrangementRowAtStep(arrangement, stepIndex) {
+  if (!Number.isFinite(stepIndex) || stepIndex < 0) return null;
+  const beat = Math.floor(stepIndex / STEPS_PER_BEAT);
+  if (!arrangement || !Array.isArray(arrangement.rows)) return null;
+  for (const row of arrangement.rows) {
+    const block = getBlockAtBeat(row, beat);
+    if (block) return { rowId: row.id, blockId: block.id, beat };
+  }
+  return null;
 }

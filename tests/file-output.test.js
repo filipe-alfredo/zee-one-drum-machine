@@ -94,3 +94,27 @@ test('writeSaveTarget uses the browser File System Access API without Electron',
     assert.equal(closed, true);
   });
 });
+
+test('requestSaveTarget rejects instead of downloading without a save API', async () => {
+  await withWindow({}, async () => {
+    await assert.rejects(
+      requestSaveTarget({ suggestedName: 'zeeone_loop_4bars_100bpm.wav' }),
+      /requires the ZeeOne Electron app or a Chromium browser/,
+    );
+  });
+});
+
+test('writeSaveTarget reports unsupported targets without downloading', async () => {
+  const messages = [];
+  await withWindow({}, async () => {
+    const saved = await writeSaveTarget(
+      { method: 'download', name: 'zeeone_loop_4bars_100bpm.wav' },
+      new Blob([new Uint8Array([1])]),
+      { toast: { show: message => messages.push(message) } },
+    );
+
+    assert.equal(saved, false);
+    assert.equal(messages.length, 1);
+    assert.match(messages[0], /Unsupported save target: download/);
+  });
+});

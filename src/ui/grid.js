@@ -57,7 +57,11 @@ export class SequencerGrid {
     this.padsByStep = Array.from({ length: totalSteps }, () => []);
 
     for (const track of visibleTracks) {
-      const row = createElement('div', { className: 'seq-row' });
+      const row = createElement('div', {
+        className: 'seq-row',
+        dataset: { trackId: track.id },
+      });
+      this.bindRowReorder(row, track);
       row.append(this.buildTrackHeader(track), this.buildPadsRow(track, pattern, totalSteps, groupSize));
       this.matrix.appendChild(row);
     }
@@ -130,16 +134,45 @@ export class SequencerGrid {
 
     const header = createElement('div', {
       className: 'track-header' + (hasSample ? ' has-sample' : ''),
+      attributes: { draggable: 'true' },
     });
 
     const nameWrap = createElement('div', {
       className: 'track-name-wrap',
-      title: `Click to audition ${track.name}`,
+      title: `Click to audition ${track.name}; drag to reorder`,
     });
+    const dragGrip = createElement('span', {
+      className: 'track-drag-grip',
+      title: `Drag to reorder ${track.name}`,
+      attributes: { 'aria-hidden': 'true' },
+    });
+    dragGrip.addEventListener('click', event => event.stopPropagation());
     nameWrap.append(
+      dragGrip,
       createElement('span', { className: 'custom-dot', title: 'Custom sample loaded' }),
       createElement('span', { text: track.name }),
     );
+
+    const initialHeaderWidth = parseInt(
+      document.body.style.getPropertyValue('--track-header-width')
+        || (window.innerWidth <= 860 ? '280' : '320'),
+      10,
+    );
+    const nameResizer = createElement('div', {
+      className: 'track-name-resizer',
+      attributes: {
+        role: 'separator',
+        'aria-orientation': 'vertical',
+        'aria-label': `Resize the name column for ${track.name}; click to fit the longest name`,
+        title: 'Drag to resize the name column; click to fit the longest name; double-click to reset',
+        'aria-valuemin': '180',
+        'aria-valuemax': '520',
+        'aria-valuenow': String(initialHeaderWidth),
+        tabindex: '0',
+        draggable: 'false',
+      },
+    });
+    nameResizer.addEventListener('click', event => event.stopPropagation());
 
     const controls = createElement('div', { className: 'track-controls' });
     const volumeWrap = createElement('div', {
@@ -189,7 +222,7 @@ export class SequencerGrid {
     });
 
     controls.append(volumeWrap, muteButton, soloButton, loadButton, hideButton);
-    header.append(nameWrap, controls);
+    header.append(nameWrap, nameResizer, controls);
 
     volumeWrap.addEventListener('click', event => event.stopPropagation());
     volumeSlider.addEventListener('click', event => event.stopPropagation());
@@ -208,7 +241,57 @@ export class SequencerGrid {
       this.auditionInstrument(track, header);
     });
 
+    header.addEventListener('dragstart', event => {
+      if (event.target.closest('button, input, .track-name-resizer') || !event.dataTransfer) {
+        event.preventDefault();
+        return;
+      }
+      event.dataTransfer.effectAllowed = 'move';
+      event.dataTransfer.setData('text/plain', track.id);
+      header.classList.add('dragging');
+    });
+    header.addEventListener('dragend', () => {
+      header.classList.remove('dragging');
+      this.clearDropIndicators();
+    });
+
     return header;
+  }
+
+  clearDropIndicators() {
+    for (const row of this.matrix.querySelectorAll('.seq-row')) {
+      row.classList.remove('drop-before', 'drop-after');
+    }
+  }
+
+  bindRowReorder(row, track) {
+    const isAfter = event => {
+      const rect = row.getBoundingClientRect();
+      return event.clientY > rect.top + rect.height / 2;
+    };
+
+    row.addEventListener('dragover', event => {
+      if (!event.dataTransfer) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = 'move';
+      const after = isAfter(event);
+      row.classList.toggle('drop-before', !after);
+      row.classList.toggle('drop-after', after);
+    });
+    row.addEventListener('dragleave', () => {
+      row.classList.remove('drop-before', 'drop-after');
+    });
+    row.addEventListener('drop', event => {
+      event.preventDefault();
+      row.classList.remove('drop-before', 'drop-after');
+      const sourceId = event.dataTransfer ? event.dataTransfer.getData('text/plain') : '';
+      if (!sourceId || sourceId === track.id) return;
+      if (this.state.moveTrack(sourceId, track.id, isAfter(event))) {
+        this.render();
+        const name = this.state.getTrack(sourceId) ? this.state.getTrack(sourceId).name : 'Track';
+        this.toast.show(`Reordered: ${name}`);
+      }
+    });
   }
 
   buildPadsRow(track, pattern, totalSteps, groupSize) {
@@ -276,7 +359,7 @@ export class SequencerGrid {
     if (!track) return;
 
     try {
-      await this.audioEngine.audition(
+      const handle = await this.audioEngine.audition(
         track.id,
         this.kitManager.getBuffer(track.id),
         track.legacyInstrumentId,
@@ -286,8 +369,10 @@ export class SequencerGrid {
         flashElement.classList.add('flash-audition');
         setTimeout(() => flashElement.classList.remove('flash-audition'), 110);
       }
+      return handle;
     } catch (error) {
       this.toast.show(`Audio could not start: ${error.message}`);
+      return null;
     }
   }
 

@@ -64,7 +64,7 @@
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <rect x="3" y="4" width="18" height="16" rx="2" />
           <line x1="3" y1="9" x2="21" y2="9" />
-          <polyline class="collapse-chevron" points="14,14 11,17 14,20" />
+          <polyline class="collapse-chevron" points="14,12 11,15 14,18" />
         </svg>
       </button>
     </div>
@@ -91,7 +91,7 @@
       </button>
       <input type="file" id="workspaceFileInput" accept=".json" hidden />
 
-      <button class="tb-btn" id="btnSave" title="Save Workspace (.json)">
+      <button class="tb-btn tb-btn--primary" id="btnSave" title="Save Workspace (.json)">
         <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#ff6b00" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
           <polyline points="17 21 17 13 7 13 7 21" />
@@ -111,7 +111,7 @@
         <span>Hide Tracks</span>
       </button>
 
-      <button class="tb-btn" id="btnClearAll" title="Clear all active steps on current pattern (Shortcut: C)">
+      <button class="tb-btn tb-btn--muted" id="btnClearAll" title="Clear all active steps on current pattern (Shortcut: C)">
         <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <polyline points="3 6 5 6 21 6" />
           <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
@@ -130,7 +130,7 @@
         <span>Play</span>
       </button>
 
-      <button class="tb-btn" id="btnStop" title="Stop Playback">
+      <button class="tb-btn tb-btn--muted" id="btnStop" title="Stop Playback">
         <svg width="19" height="19" viewBox="0 0 24 24" fill="none">
           <rect x="6" y="6" width="12" height="12" rx="1.5" fill="#9ca3af" />
         </svg>
@@ -227,6 +227,8 @@
       <div class="patterns-scroll" id="patternsList"></div>
     </aside>
 
+    <div class="layout-splitter layout-splitter--vertical" id="sidebarSplitter" role="separator" aria-orientation="vertical" aria-label="Resize the patterns sidebar" aria-valuemin="245" aria-valuemax="600" aria-valuenow="315" tabindex="0"></div>
+
     <!-- Right Panel: Drum Machine Grid -->
     <section class="drum-panel">
       <div class="panel-bar">
@@ -251,53 +253,50 @@
     </section>
   </main>
 
+  <div class="layout-splitter layout-splitter--horizontal" id="loopSplitter" role="separator" aria-orientation="horizontal" aria-label="Resize the loop arrangement" aria-valuemin="120" aria-valuemax="440" aria-valuenow="176" tabindex="0"></div>
+
   <!-- ================= BOTTOM LOOP ARRANGER ================= -->
   <section class="loop-panel" id="loopPanel" aria-label="Pattern loop arrangement">
     <div class="loop-toolbar">
-      <button class="collapse-toggle collapse-toggle--loop" id="btnToggleLoopPanel" title="Collapse the loop arrangement" aria-label="Collapse the loop arrangement" aria-pressed="false">
-        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <rect x="3" y="4" width="18" height="16" rx="2" />
-          <line x1="3" y1="9" x2="21" y2="9" />
-          <polyline class="collapse-chevron" points="14,14 11,17 14,20" />
-        </svg>
-      </button>
-
       <div class="loop-title-group">
         <span class="loop-title">Loop Arrangement</span>
-        <span class="loop-meta" id="loopMeta">4 lanes • 0 blocks • 8 bars • 8.0s</span>
+        <span class="loop-meta" id="loopMeta">0 rows • 0 blocks • 0 beats</span>
       </div>
 
-      <label class="loop-field">
-        <span>Pattern</span>
-        <select class="loop-select" id="loopPatternSelect" title="Pattern placed by clicking an empty timeline cell"></select>
-      </label>
-
-      <label class="loop-field loop-field--small">
-        <span>Bars</span>
-        <input type="number" class="loop-num" id="loopBlockBars" min="1" max="16" value="1" title="Length of each placed block in bars" />
-      </label>
-
-      <label class="loop-field loop-field--small">
-        <span>BPM</span>
-        <input type="number" class="loop-num" id="loopBpmInput" min="40" max="240" value="100" title="Tempo used by the loop arrangement" />
-      </label>
-
-      <label class="loop-field loop-field--small">
-        <span>Loop bars</span>
-        <input type="number" class="loop-num" id="loopBarsInput" min="1" max="32" value="8" title="Total length of the loop" />
-      </label>
-
       <div class="loop-button-group">
-        <button class="loop-btn loop-btn--accent" id="btnLoopMode" title="Play the bottom arrangement instead of the active pattern" aria-pressed="false">Loop Mode: Off</button>
-        <button class="loop-btn" id="btnAddLoopLane" title="Add another arrangement lane">+ Lane</button>
-        <button class="loop-btn" id="btnDeleteLoopBlock" title="Delete the selected block (Delete key)" disabled>Delete Block</button>
-        <button class="loop-btn" id="btnClearLoop" title="Remove all blocks from the timeline">Clear Loop</button>
-        <button class="loop-btn loop-btn--export" id="btnExportLoop" title="Render the whole loop arrangement to WAV">Export Loop (.wav)</button>
+        <button class="loop-btn loop-btn--mode" id="btnLoopMode" title="Loop Mode off: click to play the painted loop" aria-pressed="false">Loop Mode: Off</button>
+        <button class="loop-btn loop-btn--accent" id="btnAddLoopPattern" title="Choose workspace patterns to add as loop rows">+ Pattern</button>
+        <button class="loop-btn" id="btnClearLoop" title="Clear painted blocks or reset the whole loop grid">Clear Loop</button>
+        <button class="loop-btn loop-btn--export" id="btnExportLoop" title="Render one full loop cycle to WAV">Export Loop (.wav)</button>
+      </div>
+
+      <div class="loop-panel-actions">
+        <button class="collapse-toggle collapse-toggle--loop" id="btnMaximizeLoopPanel" title="Maximize the loop arrangement" aria-label="Maximize the loop arrangement" aria-pressed="false">
+          <svg class="loop-maximize-icon" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polyline points="8 3 3 3 3 8" />
+            <polyline points="16 3 21 3 21 8" />
+            <polyline points="21 16 21 21 16 21" />
+            <polyline points="3 16 3 21 8 21" />
+          </svg>
+          <svg class="loop-restore-icon" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polyline points="3 8 8 8 8 3" />
+            <polyline points="16 3 16 8 21 8" />
+            <polyline points="21 16 16 16 16 21" />
+            <polyline points="8 21 8 16 3 16" />
+          </svg>
+        </button>
+        <button class="collapse-toggle collapse-toggle--loop" id="btnToggleLoopPanel" title="Collapse the loop arrangement" aria-label="Collapse the loop arrangement" aria-pressed="false">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="3" y="4" width="18" height="16" rx="2" />
+            <line x1="3" y1="9" x2="21" y2="9" />
+            <polyline class="collapse-chevron" points="14,12 11,15 14,18" />
+          </svg>
+        </button>
       </div>
     </div>
 
     <div class="loop-grid-viewport" id="loopGrid"></div>
-    <div class="loop-hint">Click an empty cell to place the selected pattern • drag blocks to move • double-click a block to remove • the timeline loops continuously during playback</div>
+    <div class="loop-hint">+ Pattern adds rows • click a cell to paint the pattern for its full length • click a painted block to remove it • ✕ removes a row • each row has its own BPM</div>
   </section>
 
   <!-- ================= CONFIRMATION MODAL ================= -->
@@ -313,6 +312,47 @@
       <div class="modal-footer">
         <button class="btn-secondary" id="cancelConfirmBtn">Cancel</button>
         <button class="btn-accent" id="acceptConfirmBtn">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= LOOP PATTERN PICKER ================= -->
+  <div class="modal-backdrop" id="loopPatternModal">
+    <div class="modal-box modal-box--loop-patterns">
+      <div class="modal-header">
+        <span>Add Patterns to the Loop</span>
+        <button class="modal-close" id="closeLoopPatternModalBtn">✕</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-text modal-text--tight">
+          Select one or more workspace patterns to add as rows. A new row is silent until you paint cells in its timeline. Use ▶ to preview a pattern at its own BPM; click again to pause. Patterns already in the loop are marked and cannot be added twice.
+        </p>
+        <div class="loop-picker-summary" id="loopPatternDraftSummary" aria-live="polite">No patterns selected</div>
+        <div class="loop-picker-list" id="loopPatternList"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" id="cancelLoopPatternModalBtn">Cancel</button>
+        <button class="btn-accent" id="addLoopPatternsBtn" disabled>Add Selected</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= CLEAR LOOP MODAL ================= -->
+  <div class="modal-backdrop" id="clearLoopModal">
+    <div class="modal-box modal-box--confirm">
+      <div class="modal-header">
+        <span>Clear Loop</span>
+        <button class="modal-close" id="closeClearLoopBtn">✕</button>
+      </div>
+      <div class="modal-body">
+        <p class="confirm-message">
+          Choose what to clear from the loop grid. Clear cells removes the painted pattern blocks but keeps the pattern rows and their BPM settings. Clear rows and cells removes the pattern rows from the loop as well. This never deletes patterns from the workspace.
+        </p>
+      </div>
+      <div class="modal-footer modal-footer--wrap">
+        <button class="btn-secondary" id="cancelClearLoopBtn">Cancel</button>
+        <button class="btn-secondary" id="clearLoopCellsBtn">Clear cells</button>
+        <button class="btn-danger" id="clearLoopAllBtn">Clear rows and cells</button>
       </div>
     </div>
   </div>
@@ -470,8 +510,10 @@
         <p><strong class="accent-strong">• Time Signature:</strong> Choose one of the fixed presets: <code>2/4</code>, <code>3/4</code>, <code>4/4</code>, <code>5/4</code>, <code>6/4</code>, <code>8/4</code>, or <code>12/4</code>.</p>
         <p><strong class="accent-strong">• Hidden Tracks:</strong> Selecting a pattern with notes on hidden tracks asks whether to restore them or keep them as they are. Hidden tracks are silent in playback and WAV export. The Tracks dialog previews a local draft: checkboxes change only that draft until you press <strong>Apply</strong>; <strong>Cancel</strong> discards it. Use <code>▶</code> to audition any piece.</p>
         <p><strong class="accent-strong">• Volume:</strong> <strong>Master Volume</strong> sits in the top toolbar; each row in the <strong>Drum Grid</strong> has its own volume slider. Both are saved with the workspace.</p>
-        <p><strong class="accent-strong">• Loop Arrangement:</strong> The bottom timeline plays patterns in lanes instead of the active pattern when <strong>Loop Mode</strong> is on. Click a cell to place the selected pattern, drag blocks to move them, double-click to remove, and use <strong>Export Loop</strong> to render the whole timeline to WAV.</p>
+        <p><strong class="accent-strong">• Loop Arrangement:</strong> The bottom list plays one pattern per row, in order, when <strong>Loop Mode</strong> is on. Choose a pattern and click <strong>+ Pattern</strong> to append it; drag rows to reorder them, use ✕ to remove a row, and <strong>Export Loop</strong> renders one full cycle to WAV. Each pattern lasts its natural number of beats at the loop BPM.</p>
         <p><strong class="accent-strong">• Collapsible Panels:</strong> The <strong>Patterns</strong> title stays on the left and its chevron sits at the far right of that bar; the top-bar chevron sits just after the workspace status; the bottom loop panel has its own chevron. Each collapses into a narrow rail and expands again; none of these visual states are saved in the workspace.</p>
+        <p><strong class="accent-strong">• Resizable Panels:</strong> Drag the divider between <strong>Patterns</strong> and <strong>Drum Grid</strong> to change the sidebar width, or the divider above <strong>Loop Arrangement</strong> to change its height. Double-click a divider to reset it; arrow keys work when it is focused. Like collapses, sizes are visual only and are not saved.</p>
+        <p><strong class="accent-strong">• Reorder Rows:</strong> Drag a Drum Grid row by its grip (⠿) to place it before or after another row. The new kit order is saved with the workspace and is restored when you reopen the file.</p>
         <p><strong class="accent-strong">• Removing Samples:</strong> In <strong>Drum Kit / Samples</strong>, use <strong>Use Synth</strong> / <strong>Remove</strong> on one row or <strong>Unload All Samples</strong> for the whole kit. The File menu has the same bulk action. Every removal offers <strong>Undo</strong>.</p>
       </div>
       <div class="modal-footer">

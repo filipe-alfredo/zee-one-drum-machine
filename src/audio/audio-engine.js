@@ -91,12 +91,61 @@ export class AudioEngine {
       customBuffer,
     );
 
-    // Synth envelopes are shorter; a custom sample may be longer. Disconnect
-    // the temporary gain after the longest realistic source has finished.
-    const tailSeconds = Math.max(2, customBuffer ? customBuffer.duration + 0.5 : 0);
-    setTimeout(() => {
+    // Procedural envelopes are under a second; custom samples may be much
+    // longer. The handle lets a preview button interrupt either one without
+    // touching notes scheduled by the sequencer.
+    const durationSeconds = Math.max(0.05, customBuffer ? customBuffer.duration : 1);
+    let cleanupTimer = null;
+    let endTimer = null;
+    let released = false;
+
+    const handle = {
+      gain: trackGain,
+      duration: durationSeconds,
+      stopped: false,
+      onEnded: null,
+      release: null,
+      stop: () => this.stopAudition(handle),
+    };
+
+    const release = notifyEnd => {
+      if (released) return;
+      released = true;
+      if (cleanupTimer) clearTimeout(cleanupTimer);
+      if (endTimer) clearTimeout(endTimer);
       try { trackGain.disconnect(); } catch (_) { /* already disconnected */ }
-    }, tailSeconds * 1000);
+      if (notifyEnd && typeof handle.onEnded === 'function') {
+        const callback = handle.onEnded;
+        handle.onEnded = null;
+        callback();
+      }
+    };
+    handle.release = release;
+
+    endTimer = setTimeout(() => release(true), durationSeconds * 1000 + 40);
+    // Keep the gain connected a little longer than the source so a stopped
+    // preview can always ramp down before the node is released.
+    cleanupTimer = setTimeout(() => release(false), Math.max(2, durationSeconds + 0.5) * 1000);
+
+    return handle;
+  }
+
+  /** Fade out one audition handle; sequencer notes keep their own gains. */
+  stopAudition(handle) {
+    if (!handle || handle.stopped || !this.audioContext) return false;
+    handle.stopped = true;
+
+    const gainParam = handle.gain ? handle.gain.gain : null;
+    if (gainParam) {
+      const now = this.audioContext.currentTime;
+      const current = Number.isFinite(gainParam.value) ? gainParam.value : 1;
+      gainParam.cancelScheduledValues(now);
+      gainParam.setValueAtTime(current, now);
+      gainParam.linearRampToValueAtTime(0, now + 0.03);
+    }
+    setTimeout(() => {
+      if (typeof handle.release === 'function') handle.release(false);
+    }, 60);
 
     return true;
   }

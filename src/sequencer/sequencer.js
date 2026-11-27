@@ -1,10 +1,9 @@
 import {
-  getArrangementNotesAtStep,
-  getArrangementSteps,
-  getArrangementStepDuration,
+  getArrangementDurationSec,
+  getArrangementEvents,
 } from './arrangement.js';
 import { SchedulerClock } from './clock.js';
-import { getStepDurationSec } from './pattern.js';
+import { getStepCountForSig, getStepDurationSec } from './pattern.js';
 import { getChannelVolume, isChannelAudible } from './mixer.js';
 
 /**
@@ -23,9 +22,9 @@ export class Sequencer {
 
     this.clock = new SchedulerClock({
       getCurrentTime: () => this.audioEngine.currentTime,
-      getStepDuration: () => this.getScheduleSource().stepDuration(),
-      getTotalSteps: () => this.getScheduleSource().totalSteps(),
-      onStep: (stepIndex, nominalTime) => this.scheduleStep(stepIndex, nominalTime),
+      getEvents: () => this.getScheduleSource().events(),
+      getCycleDuration: () => this.getScheduleSource().duration(),
+      onEvent: (event, nominalTime) => this.scheduleEvent(event, nominalTime),
     });
   }
 
@@ -38,9 +37,9 @@ export class Sequencer {
   }
 
   /**
-   * A source supplies the step grid and the notes for each absolute step.
-   * The active-pattern source preserves the original behavior; the arrangement
-   * source lets the bottom playlist take over when Loop Mode is enabled.
+   * A source supplies the repeating cycle: absolute event times plus a total
+   * duration. The active pattern source keeps the original step grid; the
+   * arrangement source lets each pattern row run at its own BPM.
    */
   getScheduleSource() {
     if (typeof this.getScheduleSourceOverride === 'function') {
@@ -51,23 +50,28 @@ export class Sequencer {
     if (arrangement && arrangement.enabled) {
       const patterns = this.state.workspace.patterns;
       return {
-        totalSteps: () => getArrangementSteps(arrangement),
-        stepDuration: () => getArrangementStepDuration(arrangement),
-        notesAtStep: step => getArrangementNotesAtStep(arrangement, patterns, step),
+        events: () => getArrangementEvents(arrangement, patterns),
+        duration: () => getArrangementDurationSec(arrangement, patterns),
       };
     }
 
-    const patternStepDuration = () => {
-      const pattern = this.state.activePattern;
-      return getStepDurationSec(pattern ? pattern.bpm : 100);
-    };
-
     return {
-      totalSteps: () => this.state.totalSteps,
-      stepDuration: patternStepDuration,
-      notesAtStep: step => {
+      events: () => {
         const pattern = this.state.activePattern;
-        return pattern ? [{ pattern, stepIndex: step }] : [];
+        if (!pattern) return [];
+        const count = getStepCountForSig(pattern.timeSignature);
+        const stepDuration = getStepDurationSec(pattern.bpm);
+        return Array.from({ length: count }, (_, stepIndex) => ({
+          source: 'pattern',
+          time: stepIndex * stepDuration,
+          stepIndex,
+          pattern,
+        }));
+      },
+      duration: () => {
+        const pattern = this.state.activePattern;
+        if (!pattern) return 1;
+        return getStepCountForSig(pattern.timeSignature) * getStepDurationSec(pattern.bpm);
       },
     };
   }
@@ -103,17 +107,14 @@ export class Sequencer {
     this.clock.ensureValidStep();
   }
 
-  scheduleStep(stepIndex, nominalStepTime) {
-    const source = this.getScheduleSource();
+  scheduleEvent(event, nominalStepTime) {
     const workspace = this.state.workspace;
+    const pattern = event.pattern;
 
-    for (const note of source.notesAtStep(stepIndex)) {
-      const pattern = note.pattern;
-      if (!pattern) continue;
-
+    if (pattern) {
       for (const track of this.state.tracks) {
         const row = pattern.grid[track.patternKey];
-        if (!row || !row[note.stepIndex]) continue;
+        if (!row || !row[event.stepIndex]) continue;
         if (!isChannelAudible(workspace, track.id)) continue;
 
         const buffer = this.kitManager.getBuffer(track.id);
@@ -138,7 +139,7 @@ export class Sequencer {
 
     setTimeout(() => {
       if (this.isPlaying && generation === this.playbackGeneration && this.onStep) {
-        this.onStep(stepIndex);
+        this.onStep(event.stepIndex, false, event);
       }
     }, visualDelayMs);
   }

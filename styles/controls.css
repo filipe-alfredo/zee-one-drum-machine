@@ -52,8 +52,12 @@
     }
 
     .collapse-toggle .collapse-chevron {
-      transform-origin: 12px 15px;
-      transition: transform 0.16s ease;
+      /* Rotate around the arrow itself, not a fixed point in the SVG viewBox:
+         the sidebar arrow sits right, the top/loop arrows sit lower, so one
+         shared viewBox origin made them drift while (and after) rotating. */
+      transform-box: fill-box;
+      transform-origin: center;
+      transition: transform 0.14s ease;
     }
 
     .collapse-toggle[aria-pressed="true"] .collapse-chevron {
@@ -239,25 +243,42 @@
       align-items: center;
       justify-content: center;
       gap: 5px;
-      background-color: var(--bg-elevated);
-      border: 1px solid var(--border-strong);
+      background-color: #1f1f24;
+      border: 1px solid #34343d;
+      border-radius: 6px;
       color: var(--text-primary);
       padding: 6px 13px;
-      border-radius: 6px;
       min-width: 66px;
       height: 52px;
       cursor: pointer;
-      transition: all 0.14s ease;
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.04),
+        0 1px 2px rgba(0, 0, 0, 0.35);
+      transition: background-color 0.14s ease, border-color 0.14s ease,
+        box-shadow 0.14s ease, color 0.14s ease, transform 0.14s ease;
     }
 
     .tb-btn:hover {
-      border-color: var(--orange-primary);
-      background-color: #27272e;
+      background-color: #26262d;
+      border-color: rgba(255, 107, 0, 0.7);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.06),
+        0 3px 8px rgba(0, 0, 0, 0.38);
       transform: translateY(-1px);
+    }
+
+    .tb-btn:hover svg {
+      filter: drop-shadow(0 0 4px rgba(255, 107, 0, 0.45));
     }
 
     .tb-btn:active {
       transform: translateY(0);
+      box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.5);
+    }
+
+    .tb-btn:focus-visible {
+      outline: 2px solid var(--orange-bright);
+      outline-offset: 2px;
     }
 
     .tb-btn span {
@@ -267,8 +288,53 @@
       letter-spacing: 0.4px;
     }
 
+    /* Save is the only primary action; New/Open remain neutral with orange icons. */
+    .tb-btn--primary {
+      background-color: rgba(255, 107, 0, 0.14);
+      border-color: rgba(255, 107, 0, 0.5);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 150, 50, 0.12),
+        0 1px 2px rgba(0, 0, 0, 0.35);
+    }
+
+    .tb-btn--primary:hover {
+      background-color: rgba(255, 107, 0, 0.2);
+      border-color: var(--orange-primary);
+    }
+
+    .tb-btn--primary svg {
+      stroke: var(--orange-bright);
+    }
+
+    .tb-btn--muted {
+      background-color: #1b1b20;
+      border-color: #2e2e36;
+    }
+
+    .tb-btn--muted:hover {
+      border-color: #4a4a55;
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.04),
+        0 3px 8px rgba(0, 0, 0, 0.35);
+    }
+
+    .tb-btn--muted svg {
+      stroke: var(--text-secondary);
+    }
+
+    /* Stop uses a filled square, not a stroked icon. */
+    #btnStop svg {
+      stroke: none;
+    }
+
+    .tb-btn--muted:hover svg {
+      filter: none;
+    }
+
+    /* Play stays neutral until it is actually playing. */
     .tb-btn.play-btn.active-playing {
       background-color: var(--orange-primary);
+      background-image: linear-gradient(180deg, #ff8a1f 0%, #e85a00 100%);
       border-color: var(--orange-bright);
       color: #0b0b0c;
       box-shadow: 0 0 18px var(--orange-glow);
@@ -421,7 +487,7 @@
 
 /* Left Sidebar: Grouped Patterns */
     .patterns-sidebar {
-      width: 315px;
+      width: var(--sidebar-width, 315px);
       min-width: 245px;
       background-color: var(--bg-surface);
       border: 1px solid var(--border-subtle);
@@ -740,15 +806,22 @@
     }
 
     .bpm-badge {
-      background-color: var(--orange-primary);
-      color: #0b0b0c;
+      background-color: #19191d;
+      border: 1px solid var(--border-subtle);
+      color: #aeb4bd;
       font-family: "JetBrains Mono", monospace;
       font-size: 10px;
-      font-weight: 700;
+      font-weight: 600;
       padding: 2px 7px;
       border-radius: 999px;
       min-width: 34px;
       text-align: center;
+      box-shadow: inset 0 1px 0 rgba(255, 107, 0, 0.06);
+    }
+
+    .pattern-item.selected .bpm-badge {
+      border-color: rgba(255, 107, 0, 0.32);
+      color: #c7cbd1;
     }
 
     @media (max-width: 860px) {

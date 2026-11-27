@@ -13,13 +13,15 @@ export function createNoiseBuffer(audioContext) {
 }
 
 /**
- * Encode an AudioBuffer as a 16-bit PCM WAV Blob.
+ * Encode an AudioBuffer as a 16-bit PCM WAV Blob. `frameCount` can be shorter
+ * than the buffer to drop a silent tail without rebuilding the AudioBuffer.
  */
-export function encodeWavBlob(audioBuffer) {
+export function encodeWavBlob(audioBuffer, frameCount = audioBuffer.length) {
   const numberOfChannels = audioBuffer.numberOfChannels;
   const sampleRate = audioBuffer.sampleRate;
   const bytesPerSample = 2;
-  const dataLength = audioBuffer.length * numberOfChannels * bytesPerSample;
+  const frames = Math.max(0, Math.min(Math.floor(frameCount), audioBuffer.length));
+  const dataLength = frames * numberOfChannels * bytesPerSample;
   const buffer = new ArrayBuffer(44 + dataLength);
   const view = new DataView(buffer);
 
@@ -44,7 +46,7 @@ export function encodeWavBlob(audioBuffer) {
   view.setUint32(40, dataLength, true);
 
   let position = 44;
-  for (let index = 0; index < audioBuffer.length; index += 1) {
+  for (let index = 0; index < frames; index += 1) {
     for (let channel = 0; channel < numberOfChannels; channel += 1) {
       const sample = Math.max(-1, Math.min(1, audioBuffer.getChannelData(channel)[index]));
       view.setInt16(position, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
