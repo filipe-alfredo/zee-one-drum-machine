@@ -36,6 +36,7 @@ export class KitImportDialog {
     this.entries = [];
     this.sourceName = '';
     this.importing = false;
+    this.activePreview = null;
 
     this.modal = document.getElementById('kitImportModal');
     this.fileInput = document.getElementById('kitZipInput');
@@ -72,11 +73,13 @@ export class KitImportDialog {
 
   close() {
     if (this.importing) return;
+    this.stopActivePreview();
     this.modal.classList.remove('open');
     this.reset();
   }
 
   reset() {
+    this.stopActivePreview();
     this.entries = [];
     this.sourceName = '';
     this.importing = false;
@@ -86,6 +89,23 @@ export class KitImportDialog {
     this.status.textContent = 'Choose a .zip file to start.';
     this.confirmButton.disabled = true;
     this.confirmButton.textContent = 'Import Kit';
+  }
+
+  setPreviewState(button, playing, fileName) {
+    if (!button) return;
+    const label = `${playing ? 'Pause' : 'Play'} ${fileName}`;
+    button.textContent = playing ? '⏸' : '▶';
+    button.title = label;
+    button.setAttribute('aria-label', label);
+    button.classList.toggle('is-playing', playing);
+  }
+
+  stopActivePreview() {
+    const preview = this.activePreview;
+    if (!preview) return;
+    this.activePreview = null;
+    if (preview.handle && typeof preview.handle.stop === 'function') preview.handle.stop();
+    this.setPreviewState(preview.button, false, preview.entry.fileName);
   }
 
   async loadZip(file) {
@@ -123,6 +143,7 @@ export class KitImportDialog {
   }
 
   render() {
+    this.stopActivePreview();
     this.list.replaceChildren();
 
     for (const entry of this.entries) {
@@ -135,10 +156,15 @@ export class KitImportDialog {
       );
 
       const playButton = createElement('button', {
-        className: 'btn-secondary btn-small',
-        text: '▶ Play',
+        className: 'preview-btn kit-import-preview',
+        text: '▶',
+        title: `Play ${entry.fileName}`,
+        attributes: {
+          type: 'button',
+          'aria-label': `Play ${entry.fileName}`,
+        },
       });
-      playButton.addEventListener('click', () => this.audition(entry));
+      playButton.addEventListener('click', () => this.toggleAudition(entry, playButton));
 
       const labelInput = createElement('input', {
         className: 'kit-import-label',
@@ -169,6 +195,7 @@ export class KitImportDialog {
         title: 'Remove this file from the kit',
       });
       removeButton.addEventListener('click', () => {
+        if (this.activePreview && this.activePreview.entry === entry) this.stopActivePreview();
         this.entries = this.entries.filter(item => item !== entry);
         this.render();
       });
@@ -200,16 +227,48 @@ export class KitImportDialog {
     this.status.textContent = `${this.entries.length} file(s): ${mapped} mapped, ${unmapped} as their own row(s).`;
   }
 
-  async audition(entry) {
+  async toggleAudition(entry, button) {
+    if (this.activePreview && this.activePreview.entry === entry) {
+      this.stopActivePreview();
+      return;
+    }
+
+    this.stopActivePreview();
+    const preview = { entry, button, handle: null };
+    this.activePreview = preview;
+    this.setPreviewState(button, true, entry.fileName);
+
     try {
       await this.audioEngine.ensureStarted();
       if (!entry.buffer) {
         // decodeAudioData consumes its ArrayBuffer; keep the original bytes for import.
         entry.buffer = await decodeAudioFile(this.audioEngine.context, new Blob([entry.data.slice()]));
       }
+      if (this.activePreview !== preview) return;
+
       const instrumentId = entry.instrumentId || 'kick';
-      this.audioEngine.play(instrumentId, this.audioEngine.currentTime + 0.01, entry.buffer);
+      const handle = this.audioEngine.play(
+        instrumentId,
+        this.audioEngine.currentTime + 0.01,
+        entry.buffer,
+      );
+      if (this.activePreview !== preview) {
+        if (handle && typeof handle.stop === 'function') handle.stop();
+        return;
+      }
+      if (!handle || typeof handle !== 'object') {
+        this.stopActivePreview();
+        return;
+      }
+
+      preview.handle = handle;
+      handle.onEnded = () => {
+        if (this.activePreview !== preview) return;
+        this.activePreview = null;
+        this.setPreviewState(preview.button, false, preview.entry.fileName);
+      };
     } catch (_) {
+      if (this.activePreview === preview) this.stopActivePreview();
       this.toast.show(`Could not preview "${entry.fileName}"`);
     }
   }
@@ -217,6 +276,7 @@ export class KitImportDialog {
   async importKit() {
     if (this.importing || this.entries.length === 0) return;
 
+    this.stopActivePreview();
     this.importing = true;
     this.confirmButton.disabled = true;
     this.confirmButton.textContent = 'Importing…';

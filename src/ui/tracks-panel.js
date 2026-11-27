@@ -14,6 +14,7 @@ export class TracksPanel {
     this.checklist = document.getElementById('tracksChecklist');
     this.summary = document.getElementById('tracksDraftSummary');
     this.draftVisibility = null;
+    this.activePreview = null;
 
     document.getElementById('closeTracksModalBtn').addEventListener('click', () => this.close());
     document.getElementById('cancelTracksModalBtn').addEventListener('click', () => this.close());
@@ -21,6 +22,7 @@ export class TracksPanel {
   }
 
   open() {
+    this.stopActivePreview();
     this.resetDraft();
     this.renderChecklist();
     this.modal.classList.add('open');
@@ -32,13 +34,64 @@ export class TracksPanel {
 
   refreshIfOpen() {
     if (!this.isOpen()) return;
+    this.stopActivePreview();
     this.resetDraft();
     this.renderChecklist();
   }
 
   close() {
+    this.stopActivePreview();
     this.draftVisibility = null;
     this.modal.classList.remove('open');
+  }
+
+  setPreviewState(button, playing, name) {
+    if (!button) return;
+    const label = playing ? `Pause ${name}` : `Play ${name}`;
+    button.textContent = playing ? '⏸' : '▶';
+    button.title = label;
+    button.setAttribute('aria-label', label);
+    button.classList.toggle('is-playing', playing);
+  }
+
+  stopActivePreview() {
+    const preview = this.activePreview;
+    if (!preview) return;
+    this.activePreview = null;
+    if (preview.handle && typeof preview.handle.stop === 'function') preview.handle.stop();
+    this.setPreviewState(preview.button, false, preview.name);
+  }
+
+  async togglePreview(track, button) {
+    if (this.activePreview && this.activePreview.key === track.id) {
+      this.stopActivePreview();
+      return;
+    }
+
+    this.stopActivePreview();
+    const preview = { key: track.id, name: track.name, button, handle: null };
+    this.activePreview = preview;
+    this.setPreviewState(button, true, track.name);
+
+    try {
+      const handle = await this.onPreview(track);
+      if (this.activePreview !== preview) {
+        if (handle && typeof handle.stop === 'function') handle.stop();
+        return;
+      }
+      if (!handle || typeof handle !== 'object') {
+        this.stopActivePreview();
+        return;
+      }
+      preview.handle = handle;
+      handle.onEnded = () => {
+        if (this.activePreview !== preview) return;
+        this.activePreview = null;
+        this.setPreviewState(preview.button, false, preview.name);
+      };
+    } catch (_) {
+      if (this.activePreview === preview) this.stopActivePreview();
+    }
   }
 
   resetDraft() {
@@ -76,7 +129,7 @@ export class TracksPanel {
         text: track.name,
       });
       const previewButton = createElement('button', {
-        className: 'track-preview-btn',
+        className: 'preview-btn track-preview-btn',
         text: '▶',
         title: `Play ${track.name}`,
         attributes: {
@@ -87,7 +140,7 @@ export class TracksPanel {
       previewButton.addEventListener('click', event => {
         event.preventDefault();
         event.stopPropagation();
-        this.onPreview(track);
+        this.togglePreview(track, previewButton);
       });
 
       label.append(checkbox, name, previewButton);

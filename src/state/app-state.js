@@ -5,17 +5,15 @@ import {
 } from '../kits/instruments.js';
 import { mimeTypeForFileName, sanitizeRelativePath } from '../kits/sample-data.js';
 import {
-  addArrangementBlock,
-  addArrangementLane,
+  addArrangementRow,
   clearArrangementBlocks,
+  clearArrangementRows,
   createDefaultArrangement,
-  moveArrangementBlock,
   normalizeArrangement,
-  removeArrangementBlock,
-  removeArrangementLane,
+  removeArrangementRow,
   removePatternFromArrangement,
-  setArrangementBpm,
-  setLoopBars,
+  setArrangementRowBpm,
+  toggleArrangementBlock,
 } from '../sequencer/arrangement.js';
 import { FACTORY_PATTERNS } from '../sequencer/factory-patterns.js';
 import {
@@ -39,6 +37,7 @@ export function createDefaultKits() {
     samples: [],
     synthTracks: ALL_INSTRUMENT_IDS.slice(),
     active: {},
+    trackOrder: ALL_INSTRUMENT_IDS.slice(),
   };
 }
 
@@ -51,6 +50,7 @@ function cloneKitsState(workspace) {
       samples: (Array.isArray(kits.samples) ? kits.samples : []).map(sample => ({ ...sample })),
       synthTracks: Array.isArray(kits.synthTracks) ? kits.synthTracks.slice() : [],
       active: { ...(kits.active || {}) },
+      trackOrder: Array.isArray(kits.trackOrder) ? kits.trackOrder.slice() : [],
     },
     visibleTracks: { ...(workspace.visibleTracks || {}) },
     trackVolumes: { ...(workspace.trackVolumes || {}) },
@@ -122,6 +122,32 @@ function normalizeKits(raw) {
     // instrument that is not already represented by an imported sample.
     kits.synthTracks = ALL_INSTRUMENT_IDS.filter(id => !sampleInstruments.has(id));
   }
+
+  const validOrderIds = new Set([
+    ...kits.samples.map(sample => sample.id),
+    ...kits.synthTracks,
+  ]);
+  const seenOrderIds = new Set();
+  kits.trackOrder = [];
+  for (const rawId of Array.isArray(raw.trackOrder) ? raw.trackOrder : []) {
+    const id = String(rawId);
+    if (validOrderIds.has(id) && !seenOrderIds.has(id)) {
+      kits.trackOrder.push(id);
+      seenOrderIds.add(id);
+    }
+  }
+  for (const sample of kits.samples) {
+    if (!seenOrderIds.has(sample.id)) {
+      kits.trackOrder.push(sample.id);
+      seenOrderIds.add(sample.id);
+    }
+  }
+  for (const id of kits.synthTracks) {
+    if (!seenOrderIds.has(id)) {
+      kits.trackOrder.push(id);
+      seenOrderIds.add(id);
+    }
+  }
   return kits;
 }
 
@@ -163,7 +189,16 @@ export function tracksFromKits(kits) {
     });
   }
 
-  return tracks;
+  // Pattern keys are assigned above in canonical order (samples first), so
+  // reordering rows never changes which factory hits a row plays.
+  const order = kits && Array.isArray(kits.trackOrder) ? kits.trackOrder : [];
+  if (order.length === 0) return tracks;
+  const positions = new Map(order.map((id, index) => [id, index]));
+  return tracks.slice().sort((a, b) => {
+    const left = positions.has(a.id) ? positions.get(a.id) : Number.MAX_SAFE_INTEGER;
+    const right = positions.has(b.id) ? positions.get(b.id) : Number.MAX_SAFE_INTEGER;
+    return left - right;
+  });
 }
 
 export function createDefaultWorkspace() {
@@ -407,7 +442,57 @@ export class AppState {
     if (this.workspace.solo[trackId] === undefined) this.workspace.solo[trackId] = false;
   }
 
+  /**
+   * Keep the saved row order in sync with the kit. Unknown ids are dropped and
+   * newly added tracks are appended so every row has exactly one position.
+   */
+  ensureTrackOrder() {
+    const kits = this.workspace.kits;
+    const samples = Array.isArray(kits.samples) ? kits.samples : [];
+    const synths = Array.isArray(kits.synthTracks) ? kits.synthTracks : [];
+    const validIds = new Set([...samples.map(sample => sample.id), ...synths]);
+    const seen = new Set();
+    const order = [];
+    for (const rawId of Array.isArray(kits.trackOrder) ? kits.trackOrder : []) {
+      const id = String(rawId);
+      if (validIds.has(id) && !seen.has(id)) {
+        order.push(id);
+        seen.add(id);
+      }
+    }
+    for (const sample of samples) {
+      if (!seen.has(sample.id)) {
+        order.push(sample.id);
+        seen.add(sample.id);
+      }
+    }
+    for (const id of synths) {
+      if (!seen.has(id)) {
+        order.push(id);
+        seen.add(id);
+      }
+    }
+    kits.trackOrder = order;
+    return order;
+  }
+
+  /** Move one grid row before or after another; the order is saved with the kit. */
+  moveTrack(trackId, targetId, insertAfter = false) {
+    const order = this.ensureTrackOrder();
+    const sourceIndex = order.indexOf(trackId);
+    if (sourceIndex < 0 || trackId === targetId || !order.includes(targetId)) return false;
+
+    order.splice(sourceIndex, 1);
+    const targetIndex = order.indexOf(targetId);
+    if (targetIndex < 0) return false;
+    order.splice(targetIndex + (insertAfter ? 1 : 0), 0, trackId);
+    this.workspace.kits.trackOrder = order;
+    this.persist();
+    return true;
+  }
+
   ensureMixerMaps() {
+    this.ensureTrackOrder();
     const validIds = new Set(this.trackIds);
     const maps = [
       this.workspace.visibleTracks,
@@ -508,9 +593,14 @@ export class AppState {
     if (!track || track.kind !== 'sample') return false;
 
     this.workspace.kits.samples = this.workspace.kits.samples.filter(sample => sample.id !== trackId);
-    if (track.legacyInstrumentId && !this.workspace.kits.synthTracks.includes(track.legacyInstrumentId)) {
-      this.workspace.kits.synthTracks.push(track.legacyInstrumentId);
-    }
+    const restoredSynth = track.legacyInstrumentId
+      && !this.workspace.kits.synthTracks.includes(track.legacyInstrumentId)
+      ? track.legacyInstrumentId
+      : null;
+    if (restoredSynth) this.workspace.kits.synthTracks.push(restoredSynth);
+    this.workspace.kits.trackOrder = (this.workspace.kits.trackOrder || [])
+      .map(id => (id === trackId ? restoredSynth : id))
+      .filter(Boolean);
     this.ensureMixerMaps();
     this.ensurePatternRows(this.activePattern);
     this.persist();
@@ -567,7 +657,10 @@ export class AppState {
       }
     }
 
-    if (changed) this.ensurePatternRows(pattern);
+    if (changed) {
+      this.ensureTrackOrder();
+      this.ensurePatternRows(pattern);
+    }
     return changed;
   }
 
@@ -861,50 +954,52 @@ export class AppState {
     return this.arrangement.enabled;
   }
 
-  setArrangementBpm(value) {
-    const bpm = setArrangementBpm(this.arrangement, value);
-    this.persist();
+  addLoopRow(patternId, bpm) {
+    const row = addArrangementRow(this.arrangement, patternId, this.workspace.patterns, bpm);
+    if (row) this.persist();
+    return row;
+  }
+
+  addLoopRows(patternIds) {
+    const added = [];
+    for (const patternId of Array.isArray(patternIds) ? patternIds : []) {
+      const row = this.addLoopRow(patternId);
+      if (row) added.push(row);
+    }
+    return added;
+  }
+
+  removeLoopRow(rowId) {
+    const removed = removeArrangementRow(this.arrangement, rowId);
+    if (removed) this.persist();
+    return removed;
+  }
+
+  setLoopRowBpm(rowId, value) {
+    const bpm = setArrangementRowBpm(this.arrangement, rowId, value);
+    if (bpm !== null) this.persist();
     return bpm;
   }
 
-  setLoopBars(value) {
-    const loopBars = setLoopBars(this.arrangement, value);
-    this.persist();
-    return loopBars;
+  toggleLoopBlock(rowId, beat) {
+    const result = toggleArrangementBlock(
+      this.arrangement,
+      rowId,
+      beat,
+      this.workspace.patterns,
+    );
+    if (result) this.persist();
+    return result;
   }
 
-  addArrangementLane() {
-    const lane = addArrangementLane(this.arrangement);
-    if (lane) this.persist();
-    return lane;
-  }
-
-  removeArrangementLane(laneId) {
-    const removed = removeArrangementLane(this.arrangement, laneId);
-    if (removed) this.persist();
-    return removed;
-  }
-
-  addArrangementBlock(options) {
-    const block = addArrangementBlock(this.arrangement, options);
-    if (block) this.persist();
-    return block;
-  }
-
-  moveArrangementBlock(blockId, laneId, startBar) {
-    const moved = moveArrangementBlock(this.arrangement, blockId, laneId, startBar);
-    if (moved) this.persist();
-    return moved;
-  }
-
-  removeArrangementBlock(blockId) {
-    const removed = removeArrangementBlock(this.arrangement, blockId);
-    if (removed) this.persist();
-    return removed;
-  }
-
-  clearArrangementBlocks() {
+  clearLoopBlocks() {
     const cleared = clearArrangementBlocks(this.arrangement);
+    if (cleared) this.persist();
+    return cleared;
+  }
+
+  clearLoopRows() {
+    const cleared = clearArrangementRows(this.arrangement);
     if (cleared) this.persist();
     return cleared;
   }

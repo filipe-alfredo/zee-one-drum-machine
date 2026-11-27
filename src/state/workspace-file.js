@@ -74,6 +74,52 @@ function hasPickerApi() {
   return typeof window !== 'undefined' && typeof window.showSaveFilePicker === 'function';
 }
 
+const DESKTOP_METHODS = [
+  'chooseSavePath', 'chooseOpenPath', 'readFile', 'writeFile',
+  'getLastWorkspace', 'setLastWorkspace',
+];
+
+/** Electron keeps workspace paths in the main process, not in origin-bound IDB. */
+function getDesktopApi() {
+  if (typeof window === 'undefined' || !window.zeeoneDesktop) return null;
+  const api = window.zeeoneDesktop;
+  return DESKTOP_METHODS.every(name => typeof api[name] === 'function') ? api : null;
+}
+
+function baseName(filePath) {
+  return String(filePath).split(/[\\/]/).pop() || 'workspace.json';
+}
+
+/** A FileSystemFileHandle-shaped adapter over the native save/open bridge. */
+function createDesktopHandle(api, info) {
+  const filePath = info && info.filePath;
+  if (!filePath) return null;
+
+  return {
+    name: (info && info.name) || baseName(filePath),
+    filePath,
+    async getFile() {
+      const text = await api.readFile({ filePath });
+      return { text: async () => text };
+    },
+    async createWritable() {
+      let aborted = false;
+      return {
+        async write(data) {
+          if (aborted) return;
+          const text = typeof data === 'string' ? data : await data.text();
+          await api.writeFile({
+            filePath,
+            data: new TextEncoder().encode(text).buffer,
+          });
+        },
+        async close() {},
+        async abort() { aborted = true; },
+      };
+    },
+  };
+}
+
 async function requestWritePermission(handle) {
   if (typeof handle.requestPermission !== 'function') return true;
   const result = await handle.requestPermission({ mode: 'readwrite' });
@@ -98,6 +144,11 @@ export class WorkspaceFileController {
 
   /** Info used by the startup dialog to enable the "Open Last" button. */
   async getLastInfo() {
+    const desktop = getDesktopApi();
+    if (desktop) {
+      const info = await desktop.getLastWorkspace();
+      return info ? { name: info.name || baseName(info.filePath) } : null;
+    }
     const handle = await readLastHandle();
     return handle ? { name: handle.name || 'workspace.json' } : null;
   }
@@ -105,7 +156,12 @@ export class WorkspaceFileController {
   setHandle(handle) {
     this.handle = handle;
     this.onStatus(handle ? `Saved: ${handle.name}` : 'No workspace file');
-    if (handle) writeLastHandle(handle).catch(() => {});
+    const desktop = getDesktopApi();
+    if (desktop && handle && handle.filePath) {
+      desktop.setLastWorkspace({ filePath: handle.filePath }).catch(() => {});
+    } else if (!desktop && handle) {
+      writeLastHandle(handle).catch(() => {});
+    }
   }
 
   clearHandle() {
@@ -132,6 +188,14 @@ export class WorkspaceFileController {
   async writeTo(handle) {
     if (!handle || typeof handle.createWritable !== 'function') {
       throw new Error('This browser cannot write to files.');
+    }
+    const desktop = getDesktopApi();
+    if (desktop && handle.filePath) {
+      await desktop.writeFile({
+        filePath: handle.filePath,
+        data: new TextEncoder().encode(this.serialize()).buffer,
+      });
+      return;
     }
     const writable = await handle.createWritable();
     try {
@@ -168,7 +232,8 @@ export class WorkspaceFileController {
 
   /** Save to the open file, or pick a file on the first save. */
   async save({ saveAs = false } = {}) {
-    if (!hasPickerApi()) {
+    const desktop = getDesktopApi();
+    if (!desktop && !hasPickerApi()) {
       this.toast.show('Saving to a file requires Chrome or Edge (File System Access API).');
       return false;
     }
@@ -176,10 +241,21 @@ export class WorkspaceFileController {
     try {
       let handle = this.handle;
       if (!handle || saveAs) {
-        handle = await window.showSaveFilePicker({
-          suggestedName: this.handle ? this.handle.name : 'zeeone_drum_workspace.json',
-          types: [{ description: 'ZeeOne Workspace', accept: { 'application/json': ['.json'] } }],
-        });
+        const suggestedName = this.handle ? this.handle.name : 'zeeone_drum_workspace.json';
+        if (desktop) {
+          const choice = await desktop.chooseSavePath({
+            title: 'Save workspace',
+            suggestedName,
+            filters: [{ name: 'ZeeOne Workspace', extensions: ['json'] }],
+          });
+          if (!choice || choice.canceled) return false;
+          handle = createDesktopHandle(desktop, choice);
+        } else {
+          handle = await window.showSaveFilePicker({
+            suggestedName,
+            types: [{ description: 'ZeeOne Workspace', accept: { 'application/json': ['.json'] } }],
+          });
+        }
       }
       if (!handle) return false;
 
@@ -205,8 +281,30 @@ export class WorkspaceFileController {
     return true;
   }
 
-  /** Open a workspace and keep its handle for future writes. */
+  /** Open a workspace and keep its handle/path for future writes. */
   async open() {
+    const desktop = getDesktopApi();
+    if (desktop) {
+      try {
+        const choice = await desktop.chooseOpenPath({
+          title: 'Open workspace',
+          filters: [{ name: 'ZeeOne Workspace', extensions: ['json'] }],
+        });
+        if (!choice || choice.canceled) return false;
+        const handle = createDesktopHandle(desktop, choice);
+        if (!handle) return false;
+
+        this.clearHandle();
+        if (!await this.loadFrom(handle)) return false;
+        this.setHandle(handle);
+        this.toast.show(`Workspace loaded: ${handle.name}`);
+        return true;
+      } catch (error) {
+        this.toast.show(`Could not open workspace: ${error.message}`);
+        return false;
+      }
+    }
+
     if (typeof window === 'undefined' || typeof window.showOpenFilePicker !== 'function') return false;
 
     try {
@@ -228,8 +326,33 @@ export class WorkspaceFileController {
     }
   }
 
-  /** Reopen the last workspace; permission is requested from the click gesture. */
+  /**
+   * Reopen the last workspace. Electron reads the native path remembered by
+   * the main process; browsers reuse the IndexedDB handle after asking for
+   * permission from this click gesture.
+   */
   async openLast() {
+    const desktop = getDesktopApi();
+    if (desktop) {
+      try {
+        const info = await desktop.getLastWorkspace();
+        if (!info || !info.filePath) {
+          this.toast.show('No recent workspace to open');
+          return false;
+        }
+        const handle = createDesktopHandle(desktop, info);
+
+        this.clearHandle();
+        if (!await this.loadFrom(handle)) return false;
+        this.setHandle(handle);
+        this.toast.show(`Workspace loaded: ${handle.name}`);
+        return true;
+      } catch (error) {
+        this.toast.show(`Could not open last workspace: ${error.message}`);
+        return false;
+      }
+    }
+
     const handle = await readLastHandle();
     if (!handle) {
       this.toast.show('No recent workspace to open');

@@ -8,7 +8,7 @@ import {
 import { METAL_KIT_IDS, STANDARD_KIT_IDS } from './kits/instruments.js';
 import { KitManager } from './kits/kit-manager.js';
 import { dataUrlToBytes } from './kits/sample-data.js';
-import { cloneGrid } from './sequencer/pattern.js';
+import { cloneGrid, getStepCountForSig } from './sequencer/pattern.js';
 import { Sequencer } from './sequencer/sequencer.js';
 import { AppState } from './state/app-state.js';
 import { WorkspaceFileController } from './state/workspace-file.js';
@@ -20,6 +20,7 @@ import { LoopPanel } from './ui/loop-panel.js';
 import { NewWorkspaceDialog } from './ui/new-workspace-dialog.js';
 import { ConfirmDialog, ItemEditorDialog } from './ui/modals.js';
 import { PatternsPanel } from './ui/patterns-panel.js';
+import { installResizeHandles, installTrackNameResize } from './ui/resize-handles.js';
 import { StartupDialog } from './ui/startup-dialog.js';
 import { Toast } from './ui/toast.js';
 import { TracksPanel } from './ui/tracks-panel.js';
@@ -31,6 +32,8 @@ class DrumMachineApp {
     this.sidebarCollapsed = false;
     this.topbarCollapsed = false;
     this.loopCollapsed = false;
+    this.loopMaximized = false;
+    this.previewPatternId = null;
 
     this.audioEngine = new AudioEngine();
     this.toast = new Toast();
@@ -55,7 +58,11 @@ class DrumMachineApp {
       audioEngine: this.audioEngine,
       state: this.state,
       kitManager: this.kitManager,
-      onStep: (stepIndex, resetOnly) => {
+      onStep: (stepIndex, resetOnly, event) => {
+        if (event && event.source === 'loop') {
+          if (this.loopPanel) this.loopPanel.updatePlayhead(event.time, false, event);
+          return;
+        }
         this.grid.updatePlayhead(stepIndex, resetOnly);
         if (this.loopPanel) this.loopPanel.updatePlayhead(stepIndex, resetOnly);
       },
@@ -88,6 +95,8 @@ class DrumMachineApp {
       onLoopModeChanged: () => this.afterLoopModeChanged(),
       onExportWav: () => this.exportLoopWav(),
       onToggleCollapse: () => this.toggleLoopPanel(),
+      onToggleMaximize: () => this.toggleLoopMaximize(),
+      onPreviewPattern: (pattern, shouldPlay) => this.setPatternPreview(pattern, shouldPlay),
     });
 
     this.tracksPanel = new TracksPanel({
@@ -151,6 +160,8 @@ class DrumMachineApp {
   }
 
   init() {
+    installResizeHandles();
+    installTrackNameResize();
     this.refreshAllUI();
     this.startup.open();
   }
@@ -272,6 +283,7 @@ class DrumMachineApp {
   }
 
   async togglePlayback() {
+    if (this.previewPatternId) this.clearPatternPreview();
     if (this.sequencer.isPlaying) {
       this.stopPlayback();
       return;
@@ -293,13 +305,57 @@ class DrumMachineApp {
 
   stopPlayback() {
     this.playRequestToken += 1;
+    this.clearPatternPreview();
     this.sequencer.stop();
     this.controls.setPlaying(false);
+  }
+
+  clearPatternPreview() {
+    if (!this.previewPatternId) return;
+    this.previewPatternId = null;
+    this.sequencer.getScheduleSourceOverride = null;
+  }
+
+  /** Preview one workspace pattern at its own BPM without changing the loop. */
+  async setPatternPreview(pattern, shouldPlay = true) {
+    const active = Boolean(pattern) && Boolean(shouldPlay);
+
+    this.stopPlayback();
+    this.clearPatternPreview();
+    if (!active) return false;
+
+    this.previewPatternId = pattern.id;
+    const previewPattern = pattern;
+    this.sequencer.getScheduleSourceOverride = () => {
+      const count = getStepCountForSig(previewPattern.timeSignature);
+      const stepDuration = (60 / previewPattern.bpm) / 4;
+      return {
+        events: () => Array.from({ length: count }, (_, stepIndex) => ({
+          source: 'preview',
+          time: stepIndex * stepDuration,
+          stepIndex,
+          pattern: previewPattern,
+        })),
+        duration: () => count * stepDuration,
+      };
+    };
+
+    try {
+      await this.sequencer.start();
+      if (this.previewPatternId !== previewPattern.id) return false;
+      this.controls.setPlaying(true);
+      return true;
+    } catch (error) {
+      this.clearPatternPreview();
+      this.toast.show(`Preview could not start: ${error.message}`);
+      return false;
+    }
   }
 
   afterLoopModeChanged() {
     // Switching sources mid-playback would mix the two timelines; restart is
     // explicit so the next Play always begins at bar 1 of the chosen source.
+    this.clearPatternPreview();
     this.stopPlayback();
     const enabled = this.state.arrangement.enabled;
     this.toast.show(enabled
@@ -320,9 +376,27 @@ class DrumMachineApp {
   }
 
   toggleLoopPanel() {
+    // The rail and the maximized view are mutually exclusive. Collapsing from
+    // the maximized view first restores the normal panel, then collapses it.
+    if (this.loopMaximized) this.setLoopMaximized(false);
     this.loopCollapsed = !this.loopCollapsed;
     document.body.classList.toggle('loop-collapsed', this.loopCollapsed);
     this.loopPanel.setCollapsed(this.loopCollapsed);
+  }
+
+  toggleLoopMaximize() {
+    this.setLoopMaximized(!this.loopMaximized);
+  }
+
+  setLoopMaximized(maximized) {
+    this.loopMaximized = Boolean(maximized);
+    document.body.classList.toggle('loop-maximized', this.loopMaximized);
+    this.loopPanel.setMaximized(this.loopMaximized);
+    if (this.loopMaximized && this.loopCollapsed) {
+      this.loopCollapsed = false;
+      document.body.classList.remove('loop-collapsed');
+      this.loopPanel.setCollapsed(false);
+    }
   }
 
   applyGridVisibilityPreset(preset) {
@@ -355,6 +429,7 @@ class DrumMachineApp {
     this.sequencer.ensureValidStep();
     this.controls.setTimeSignature(result.timeSignature);
     this.grid.render();
+    this.loopPanel.render();
     this.toast.show(`Time Signature: ${result.timeSignature} (${result.totalSteps} steps)`);
   }
 
@@ -456,7 +531,7 @@ class DrumMachineApp {
     let target;
     try {
       target = await requestSaveTarget({
-        suggestedName: buildLoopWavFileName(this.state.arrangement),
+        suggestedName: buildLoopWavFileName(this.state.arrangement, this.state.workspace.patterns),
         description: 'WAV audio',
         mimeType: 'audio/wav',
         extensions: ['wav'],

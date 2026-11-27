@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { encodeWavBlob } from '../src/audio/audio-utils.js';
-import { buildWavFileName } from '../src/audio/wav-export.js';
+import { buildLoopWavFileName, buildWavFileName } from '../src/audio/wav-export.js';
 
 function readString(view, offset, length) {
   let value = '';
@@ -15,6 +15,23 @@ test('WAV file names are derived from the pattern name and BPM', () => {
   assert.equal(buildWavFileName({ name: 'Rock 1', bpm: 100 }), 'zeeone_rock_1_100bpm.wav');
   assert.equal(buildWavFileName({ name: 'My Pattern!', bpm: 82 }), 'zeeone_my_pattern__82bpm.wav');
 });
+
+test('loop WAV names report rows and painted beats without a global BPM', () => {
+  const arrangement = {
+    enabled: true,
+    timelineBeats: 32,
+    rows: [
+      { id: 'r1', patternId: 'p1', bpm: 90, blocks: [{ id: 'b1', start: 0, beats: 4 }] },
+      { id: 'r2', patternId: 'p2', bpm: 160, blocks: [{ id: 'b2', start: 8, beats: 5 }] },
+    ],
+  };
+  assert.equal(buildLoopWavFileName(arrangement), 'zeeone_loop_2rows_13beats.wav');
+  assert.equal(buildLoopWavFileName(createEmptyArrangement()), 'zeeone_loop_0rows_1beats.wav');
+});
+
+function createEmptyArrangement() {
+  return { enabled: false, timelineBeats: 32, rows: [] };
+}
 
 test('encoded audio has a valid 16-bit stereo WAV header', async () => {
   const audioBuffer = {
@@ -50,4 +67,22 @@ test('encoded audio has a valid 16-bit stereo WAV header', async () => {
   assert.equal(view.getInt16(48, true), 32767);
   assert.equal(view.getInt16(50, true), -32768);
   assert.equal(view.getInt16(52, true), -32768);
+});
+
+test('WAV encoder can stop at a cropped frame count', async () => {
+  const audioBuffer = {
+    numberOfChannels: 2,
+    sampleRate: 44100,
+    length: 4,
+    getChannelData(channel) {
+      return channel === 0 ? [0, 1, -1, 0.5] : [0, -1, 1, 0];
+    },
+  };
+
+  const blob = encodeWavBlob(audioBuffer, 2);
+  assert.equal(blob.size, 44 + 2 * 2 * 2);
+  const view = new DataView(await blob.arrayBuffer());
+  assert.equal(view.getUint32(40, true), 8);
+  assert.equal(view.getInt16(48, true), 32767);
+  assert.equal(view.getInt16(50, true), -32768);
 });

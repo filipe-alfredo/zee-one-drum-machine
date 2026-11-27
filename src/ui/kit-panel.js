@@ -25,6 +25,7 @@ export class KitPanel {
     this.onImportKit = onImportKit;
     this.onRemoveSample = onRemoveSample || (() => {});
     this.onUnloadSamples = onUnloadSamples || (() => {});
+    this.activePreview = null;
 
     this.modal = document.getElementById('kitModal');
     this.slotList = document.getElementById('kitSlotList');
@@ -51,10 +52,61 @@ export class KitPanel {
   }
 
   close() {
+    this.stopActivePreview();
     this.modal.classList.remove('open');
   }
 
+  setPreviewState(button, playing, name) {
+    if (!button) return;
+    const label = playing ? `Pause ${name}` : `Play ${name}`;
+    button.textContent = playing ? '⏸' : '▶';
+    button.title = label;
+    button.setAttribute('aria-label', label);
+    button.classList.toggle('is-playing', playing);
+  }
+
+  stopActivePreview() {
+    const preview = this.activePreview;
+    if (!preview) return;
+    this.activePreview = null;
+    if (preview.handle && typeof preview.handle.stop === 'function') preview.handle.stop();
+    this.setPreviewState(preview.button, false, preview.name);
+  }
+
+  async togglePreview(track, button) {
+    if (this.activePreview && this.activePreview.key === track.id) {
+      this.stopActivePreview();
+      return;
+    }
+
+    this.stopActivePreview();
+    const preview = { key: track.id, name: track.name, button, handle: null };
+    this.activePreview = preview;
+    this.setPreviewState(button, true, track.name);
+
+    try {
+      const handle = await this.onPreview(track);
+      if (this.activePreview !== preview) {
+        if (handle && typeof handle.stop === 'function') handle.stop();
+        return;
+      }
+      if (!handle || typeof handle !== 'object') {
+        this.stopActivePreview();
+        return;
+      }
+      preview.handle = handle;
+      handle.onEnded = () => {
+        if (this.activePreview !== preview) return;
+        this.activePreview = null;
+        this.setPreviewState(preview.button, false, preview.name);
+      };
+    } catch (_) {
+      if (this.activePreview === preview) this.stopActivePreview();
+    }
+  }
+
   renderSlots() {
+    this.stopActivePreview();
     this.slotList.replaceChildren();
 
     for (const track of this.state.tracks) {
@@ -73,10 +125,19 @@ export class KitPanel {
       const actions = createElement('div', { className: 'kit-slot-actions' });
 
       const previewButton = createElement('button', {
-        className: 'btn-secondary btn-small',
-        text: 'Preview',
+        className: 'preview-btn kit-preview-btn',
+        text: '▶',
+        title: `Play ${track.name}`,
+        attributes: {
+          type: 'button',
+          'aria-label': `Play ${track.name}`,
+        },
       });
-      previewButton.addEventListener('click', () => this.onPreview(track));
+      previewButton.addEventListener('click', event => {
+        event.preventDefault();
+        event.stopPropagation();
+        this.togglePreview(track, previewButton);
+      });
 
       const assignButton = createElement('button', {
         className: 'btn-accent btn-small btn-small--assign',

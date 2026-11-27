@@ -4,19 +4,19 @@
 
 | File | Responsibility |
 | --- | --- |
-| `sequencer/clock.js` | Lookahead scheduler; converts AudioContext time into step numbers |
-| `sequencer/sequencer.js` | Starts/stops playback, selects the pattern or arrangement source, applies mixer rules, schedules sounds for runtime tracks |
-| `sequencer/arrangement.js` | Loop lanes, blocks, limits, step mapping, and notes at each timeline step |
+| `sequencer/clock.js` | Lookahead scheduler; schedules absolute events inside a repeating AudioContext-time cycle |
+| `sequencer/sequencer.js` | Starts/stops playback, selects the pattern/loop/preview source, applies mixer rules, schedules sounds for runtime tracks |
+| `sequencer/arrangement.js` | Loop rows/blocks, natural pattern lengths, timeline growth, limits, events, migration |
 | `sequencer/pattern.js` | Step counts, beat grouping, step duration, signature validation messages, grid transformations |
 | `sequencer/factory-patterns.js` | The 24 shipped patterns as readable hit lists |
 | `sequencer/mixer.js` | Visibility, mute/solo, and volume rules |
-| `ui/grid.js` | Renders visible tracks/steps, handles pad edits and playhead display |
-| `ui/loop-panel.js` | Renders the bottom timeline, block drag/drop, Loop Mode, and loop export action |
+| `ui/grid.js` | Renders visible tracks/steps, handles pad edits, row drag/drop and playhead display |
+| `ui/loop-panel.js` | Renders the pattern picker, vertical rows/horizontal beat grid, clear modals, playhead, Loop Mode, and loop export action |
 | `ui/patterns-panel.js` | Group/pattern sidebar, search, CRUD dialogs, hidden-track detection |
 | `state/app-state.js` | Derives runtime tracks, maps legacy pattern rows, restores missing synth tracks, stores volumes |
 | `ui/modals.js` | Confirm dialog with independent cancel label/callback |
 
-`SchedulerClock` is created by `Sequencer` with four callbacks: current audio time, step duration, total steps, and `onStep`. The clock knows nothing about instruments, tracks, or UI.
+`SchedulerClock` is created by `Sequencer` with four callbacks: current audio time, absolute events, cycle duration, and `onEvent`. The clock knows nothing about instruments, tracks, or UI.
 
 ## Timing and clock
 
@@ -38,13 +38,14 @@ Scheduling parameters: 25 ms wake-up interval, 120 ms scheduling horizon, 105 ms
 
 ## Bottom loop arrangement
 
-The panel at the bottom of the page is a fixed 16th-note timeline: **16 steps per bar**, independent BPM (40–240, default 100), and 1–32 bars (default 8). Each lane holds blocks `{ id, patternId, startBar, lengthBars }`; a block repeats its pattern once per covered bar, mapping the pattern's own steps proportionally onto the 16 timeline steps (for example, an 8-step pattern uses every other timeline step). Patterns stay short and reusable; editing one updates every block that references it.
+The panel at the bottom of the page is a beat grid: each workspace pattern added to the loop is a vertical row and the horizontal timeline starts with 32 quarter-beat cells (☐ = 1 beat). **+ Pattern** opens a modal listing all workspace patterns with multiple selection and a ▶/⏸ preview per pattern; patterns already in the loop are marked `in loop` and cannot be added twice. A newly added row is silent until its cells are painted. There is no pattern selector, global loop BPM, **Remove Pattern** button, or drag-to-reorder.
 
-- Up to 8 lanes and 16 bars per block. Blocks may be placed by clicking an empty cell, dragged to another lane/bar, selected, and deleted with the button, **Delete**, **Backspace**, or double-click. Blocks cannot overlap in the same lane; a covered cell selects the existing block instead of adding another.
-- `normalizeArrangement()` drops unknown pattern ids, regenerates duplicate ids, clamps values, and resolves overlaps by keeping the earliest block. Shortening the loop trims or removes blocks that no longer fit.
-- **Loop Mode** makes the arrangement the playback source (`getScheduleSource()`), so the active pattern remains editable but does not play along. Turning Loop Mode on/off stops playback first; the next Play starts at bar 1 of the chosen source.
-- The loop playhead highlights the current bar on the timeline. The active pattern grid keeps its own playhead only when Loop Mode is off.
-- The panel and the File menu both expose **Export Loop Arrangement (.wav)**, rendered from the same timeline notes and mixer rules as live playback.
+- Painting a cell inserts one complete occurrence of that row's pattern: `2/4` covers the clicked beat + 1, `4/4` covers +3, `5/4` covers +4, and `12/4` covers +11. Clicking any painted cell removes the whole block. Blocks from different rows may overlap in the same column and sound together.
+- BPM is editable per row (40–240, defaulting to the pattern's BPM); there is no global loop tempo. Because each row converts its timeline beats to seconds with its own BPM, rows at different tempos intentionally drift relative to each other. ✕ removes a row from the loop, and **Clear Loop** separately offers **Clear cells** (keeps rows and BPM) or **Clear rows and cells**; neither action deletes workspace patterns.
+- The timeline grows in 8-beat pages when a block reaches the right edge, starting at 32 and capped at 512 beats. The loop is capped at 64 rows and 512 blocks. `normalizeArrangement()` drops unknown pattern ids, regenerates duplicate ids, clamps BPM and block lengths, and migrates legacy `sequence[]` / `lanes[].blocks[]` workspaces into painted rows. Deleting a pattern removes its row from the loop.
+- **Loop Mode** makes the painted cycle the playback source (`getScheduleSource()`), so the active pattern remains editable but does not play along. Turning Loop Mode on/off stops playback first; the next Play starts at beat 1 of the chosen source.
+- The loop playhead highlights every block active at the current audio time. The active pattern grid keeps its own playhead only when Loop Mode is off and no picker preview is running.
+- The panel and the File menu both expose **Export Loop Arrangement (.wav)**, rendered from one full painted cycle with the same notes and mixer rules as live playback. The suggested filename reports rows and beats, for example `zeeone_loop_2rows_5beats.wav`.
 
 ## BPM and swing
 
@@ -67,14 +68,15 @@ The panel at the bottom of the page is a fixed 16th-note timeline: **16 steps pe
 ## Playback lifecycle
 
 1. **Start**: `app.togglePlayback()` increments a request token, then `Sequencer.start()` awaits `AudioEngine.ensureStarted()` and starts the clock only if no clock is already running. The token prevents a late start from overriding a subsequent Stop.
-2. **Scheduling**: each clock tick asks `getScheduleSource()` for the total steps, step duration, and notes at that step. With Loop Mode off the source is the active pattern; with it on, `getArrangementNotesAtStep()` returns every pattern/step pair active on that timeline step. For each runtime track with an active pad at `pattern.grid[track.patternKey]`, `isChannelAudible()` checks visibility, mute and solo; the step time is `max(currentTime, stepTime)`, then the sample or synth is rendered through the track gain into the master gain.
-3. **Visuals**: a delayed callback updates `.step-pad.playhead`, the LED pips, the loop bar highlight, and the transport button. The generation counter prevents stale playheads after restart, source switches, or time-signature changes (`ensureValidStep()`).
+2. **Scheduling**: each clock tick asks `getScheduleSource()` for absolute `{ time, stepIndex, pattern }` events and the cycle duration. With Loop Mode off the source is the active pattern (16th steps from `getStepDurationSec()`); with it on, `getArrangementEvents()` emits every step of every painted block at its row BPM (one beat = `60 / row.bpm`, one step = beat / 4), so an 8/4 row uses all 32 of its steps. The picker's ▶ preview installs a temporary source override for one pattern at its own BPM. For each runtime track with an active pad at `pattern.grid[track.patternKey]`, `isChannelAudible()` checks visibility, mute and solo; the audio time is `max(currentTime, event time)`, then the sample or synth is rendered through the track gain into the master gain.
+3. **Visuals**: a delayed callback updates `.step-pad.playhead`, the LED pips, the transport button, and — for `source: 'loop'` events — every loop cell belonging to the active blocks. The generation counter prevents stale playheads after restart, source switches, or time-signature changes (`ensureValidStep()`).
 4. **Stop**: `Sequencer.stop()` clears the interval, bumps the generation, resets the playhead to step 0, and the transport returns to its idle state. The AudioContext stays ready for the next start.
-5. **Pattern/selection changes** while playing read the current `state.activePattern` at each scheduled step, so edits take effect on the next loop.
+5. **Pattern/selection changes** while playing are read from the event's `pattern` at each scheduled step, so edits take effect on the next cycle. Editing loop cells or row BPM rebuilds the event list for the next scheduling tick.
 
 ## Grid interaction
 
 - Each visible track row has an audition button, mute (`M`), solo (`S`), a 0–100% volume slider, and step pads. The pad state writes straight to `state.setStep()`.
+- Drag a row by its grip (⠿) to drop it before or after another row. `state.moveTrack()` updates the saved `kits.trackOrder[]`, then the grid re-renders in the new order. Pattern keys are assigned before sorting, so the same notes keep playing on the same tracks after a reorder; the new order travels in the workspace JSON.
 - Auditioning uses the same per-track volume as scheduled playback and is silent when the context cannot start (an error toast is shown). The Tracks dialog has a ▶ button per drum piece that uses the same audition path.
 - The header shows the active pattern name and step count; a 0-track empty state offers kit presets.
 - Track visibility presets: Standard (8), Metal/Rock (11), All (all current tracks), Hide All. They work on runtime track ids, falling back to legacy instrument ids, so imported rows can be shown/hidden too. Visibility is stored in the same workspace file as note data.
@@ -82,4 +84,4 @@ The panel at the bottom of the page is a fixed 16th-note timeline: **16 steps pe
 
 ## Validation
 
-See [VALIDATION.md](VALIDATION.md) for the recorded browser regression checks and the focused Node tests covering timing formulas, grid transformations, arrangement limits/normalization/CRUD/step mapping, state CRUD, dynamic tracks and import, mixer rules (including hidden tracks and volumes), filename matching, and WAV encoding.
+See [VALIDATION.md](VALIDATION.md) for the recorded browser regression checks and the focused Node tests covering timing formulas, grid transformations, loop rows/blocks, timeline growth, per-row BPM events, limits/normalization/migration/CRUD, state CRUD, dynamic tracks and import, mixer rules (including hidden tracks and volumes), filename matching, and WAV encoding.

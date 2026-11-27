@@ -27,6 +27,69 @@
       background-color: var(--bg-deep);
     }
 
+    /* Zero-width separators keep the original layout intact; only the hit
+       areas (and the hover highlight) extend into the surrounding gap. */
+    .layout-splitter {
+      position: relative;
+      flex: 0 0 0;
+      z-index: 20;
+      outline: none;
+    }
+
+    .layout-splitter::before {
+      content: "";
+      position: absolute;
+      background-color: transparent;
+      transition: background-color 0.12s ease;
+    }
+
+    .layout-splitter:hover::before,
+    .layout-splitter:focus-visible::before,
+    body.resizing-sidebar .layout-splitter--vertical::before,
+    body.resizing-loop .layout-splitter--horizontal::before {
+      background-color: rgba(255, 107, 0, 0.6);
+    }
+
+    .layout-splitter--vertical {
+      align-self: stretch;
+      width: 0;
+      margin-left: -4px;
+      margin-right: -4px;
+    }
+
+    .layout-splitter--vertical::before {
+      top: 0;
+      bottom: 0;
+      left: -4px;
+      width: 9px;
+      cursor: col-resize;
+    }
+
+    .layout-splitter--horizontal {
+      align-self: stretch;
+      height: 0;
+    }
+
+    .layout-splitter--horizontal::before {
+      left: 8px;
+      right: 8px;
+      top: -4px;
+      height: 9px;
+      cursor: row-resize;
+    }
+
+    body.resizing-sidebar,
+    body.resizing-sidebar * {
+      cursor: col-resize !important;
+      user-select: none !important;
+    }
+
+    body.resizing-loop,
+    body.resizing-loop * {
+      cursor: row-resize !important;
+      user-select: none !important;
+    }
+
 /* ================= MODALS & TOAST ================= */
     .modal-backdrop {
       position: fixed;
@@ -143,6 +206,13 @@
       border-color: var(--orange-primary);
     }
 
+    .kit-import-row .btn-secondary.is-playing {
+      background-color: var(--orange-primary);
+      border-color: var(--orange-bright);
+      color: #1a0d00;
+      box-shadow: 0 0 8px rgba(255, 107, 0, 0.45);
+    }
+
     .modal-input,
     .modal-select {
       width: 100%;
@@ -218,7 +288,10 @@
       white-space: nowrap;
     }
 
-    .track-preview-btn {
+    /* Every icon-only audio preview (Tracks, Drum Kit, ZIP import, Loop
+       picker) uses this one compact control. Orange appears on hover/focus;
+       playback uses the same quiet graphite/red language as Loop Mode. */
+    .preview-btn {
       background-color: var(--bg-elevated);
       border: 1px solid var(--border-strong);
       color: var(--text-secondary);
@@ -233,11 +306,26 @@
       padding: 0;
       cursor: pointer;
       flex-shrink: 0;
+      transition: background-color 0.14s ease, border-color 0.14s ease,
+        color 0.14s ease;
     }
 
-    .track-preview-btn:hover {
+    .preview-btn:hover {
       border-color: var(--orange-primary);
       color: var(--orange-bright);
+    }
+
+    .preview-btn:focus-visible {
+      border-color: var(--orange-bright);
+      outline: 1px solid rgba(255, 107, 0, 0.55);
+      outline-offset: 1px;
+    }
+
+    .preview-btn.is-playing {
+      background-color: rgba(220, 38, 38, 0.2);
+      border-color: rgba(248, 113, 113, 0.65);
+      color: #ffb4ab;
+      box-shadow: none;
     }
 
     .sample-slot-row {

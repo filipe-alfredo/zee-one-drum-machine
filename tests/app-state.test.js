@@ -7,7 +7,11 @@ import {
   normalizeWorkspace,
 } from '../src/state/app-state.js';
 import { INSTRUMENTS } from '../src/kits/instruments.js';
-import { createDefaultArrangement } from '../src/sequencer/arrangement.js';
+import {
+  createDefaultArrangement,
+  getArrangementBeats,
+  getBlockAtBeat,
+} from '../src/sequencer/arrangement.js';
 
 test('default workspace matches the shipped application', () => {
   const workspace = createDefaultWorkspace();
@@ -331,71 +335,121 @@ test('a new AppState always starts from the factory workspace', () => {
   assert.equal(second.activePattern.grid.kick[15], false);
 });
 
-test('the arrangement is exported with the workspace and survives normalization', () => {
+test('the loop grid is exported with the workspace and survives normalization', () => {
   const state = new AppState();
   assert.deepEqual(state.arrangement, createDefaultArrangement());
 
   state.setLoopEnabled(true);
-  assert.equal(state.setArrangementBpm(150), 150);
-  assert.equal(state.setLoopBars(4), 4);
-  const block = state.addArrangementBlock({
-    laneId: state.arrangement.lanes[0].id,
-    patternId: 'pat_rock_1',
-    startBar: 2,
-    lengthBars: 2,
-  });
-  assert.ok(block);
+  const rows = state.addLoopRows(['pat_rock_1', 'pat_mathcore']);
+  assert.equal(rows.length, 2);
+  assert.equal(state.setLoopRowBpm(rows[0].id, 150), 150);
+  const painted = state.toggleLoopBlock(rows[0].id, 3);
+  assert.ok(painted);
+  assert.equal(getArrangementBeats(state.arrangement), 7);
 
   const saved = JSON.parse(JSON.stringify(state.getExportData()));
   assert.equal(saved.arrangement.enabled, true);
-  assert.equal(saved.arrangement.bpm, 150);
-  assert.equal(saved.arrangement.loopBars, 4);
-  assert.equal(saved.arrangement.lanes[0].blocks.length, 1);
+  assert.equal(Object.prototype.hasOwnProperty.call(saved.arrangement, 'bpm'), false);
+  assert.deepEqual(saved.arrangement.rows.map(row => [
+    row.patternId, row.bpm, row.blocks.length,
+  ]), [['pat_rock_1', 150, 1], ['pat_mathcore', 158, 0]]);
 
   const normalized = normalizeWorkspace(saved);
   assert.deepEqual(normalized.arrangement, saved.arrangement);
 });
 
-test('arrangement CRUD notifies persistence and unlinks deleted patterns', () => {
+test('loop row and cell CRUD notifies persistence and unlinks deleted patterns', () => {
   let notifications = 0;
   const state = new AppState({ onPersist: () => { notifications += 1; } });
-  const lane = state.arrangement.lanes[0];
 
-  const block = state.addArrangementBlock({
-    laneId: lane.id,
-    patternId: 'pat_rock_1',
-    startBar: 0,
-    lengthBars: 2,
-  });
-  assert.ok(block);
+  const first = state.addLoopRow('pat_rock_1');
+  assert.ok(first);
   assert.equal(notifications, 1);
-  assert.equal(state.addArrangementBlock({
-    laneId: lane.id,
-    patternId: 'pat_rock_2',
-    startBar: 1,
-    lengthBars: 1,
-  }), null);
-  assert.equal(notifications, 1);
+  assert.equal(state.addLoopRow('missing'), null);
+  assert.equal(state.addLoopRows(['missing', 'pat_rock_2']).length, 1);
+  assert.equal(notifications, 2);
 
-  assert.equal(state.moveArrangementBlock(block.id, lane.id, 4), true);
-  assert.equal(state.getPattern('pat_rock_2') && state.getPattern('pat_rock_2').id, 'pat_rock_2');
-  assert.equal(state.deletePattern('pat_rock_2').id, 'pat_rock_2');
-  assert.equal(state.arrangement.lanes[0].blocks.some(item => item.id === block.id), true);
+  const painted = state.toggleLoopBlock(first.id, 1);
+  assert.ok(painted);
+  assert.equal(getBlockAtBeat(first, 1).id, painted.block.id);
+  assert.equal(notifications, 3);
+  assert.equal(state.toggleLoopBlock(first.id, 2).action, 'removed');
+  assert.equal(notifications, 4);
 
-  const lastPattern = state.workspace.patterns[state.workspace.patterns.length - 1];
-  const linkedBlock = state.addArrangementBlock({
-    laneId: state.arrangement.lanes[1].id,
-    patternId: lastPattern.id,
-    startBar: 5,
-    lengthBars: 1,
-  });
-  assert.ok(linkedBlock);
-  assert.equal(state.deletePattern(lastPattern.id).id, lastPattern.id);
-  assert.equal(state.arrangement.lanes[1].blocks.some(item => item.id === linkedBlock.id), false);
+  assert.equal(state.clearLoopBlocks(), false);
+  assert.ok(state.toggleLoopBlock(first.id, 8));
+  assert.equal(state.clearLoopBlocks(), true);
+  assert.equal(state.arrangement.rows.length, 2);
 
-  const addedLane = state.addArrangementLane();
-  assert.equal(state.removeArrangementLane(addedLane.id), true);
-  assert.equal(state.clearArrangementBlocks(), true);
-  assert.equal(state.arrangement.lanes[0].blocks.length, 0);
+  assert.equal(state.deletePattern('pat_rock_1').id, 'pat_rock_1');
+  assert.equal(state.arrangement.rows.some(row => row.id === first.id), false);
+
+  assert.equal(state.removeLoopRow(state.arrangement.rows[0].id), true);
+  assert.equal(state.addLoopRow('pat_ska_1').patternId, 'pat_ska_1');
+  assert.equal(state.clearLoopRows(), true);
+  assert.equal(state.arrangement.rows.length, 0);
   assert.ok(notifications > 5);
+});
+
+test('grid rows can be reordered and the order travels in the workspace', () => {
+  const state = new AppState();
+  const ids = state.trackIds.slice();
+  const snapshot = state.captureKitsState();
+  const expected = ids.slice(1, 3).concat([ids[0]], ids.slice(3));
+
+  assert.equal(state.moveTrack(ids[0], ids[2], true), true);
+  assert.deepEqual(state.trackIds, expected);
+  assert.deepEqual(state.workspace.kits.trackOrder, expected);
+
+  const normalized = normalizeWorkspace(state.getExportData());
+  assert.deepEqual(normalized.kits.trackOrder, expected);
+  assert.deepEqual(
+    normalized.patterns[0].grid.kick,
+    state.workspace.patterns[0].grid.kick,
+  );
+
+  assert.equal(state.restoreKitsState(snapshot), true);
+  assert.deepEqual(state.trackIds, ids);
+  assert.equal(state.moveTrack('missing', ids[1]), false);
+  assert.equal(state.moveTrack(ids[0], ids[0]), false);
+});
+
+test('row order keeps samples and synths interleaved and drops unknown ids', () => {
+  const state = new AppState();
+  state.replaceKitSamples([{
+    id: 'smp_kick',
+    instrumentId: 'kick',
+    label: 'kick 1',
+    data: 'data:audio/wav;base64,AAAA',
+  }]);
+  state.selectPattern('pat_rock_2');
+
+  assert.equal(state.moveTrack('close_hat', 'smp_kick', true), true);
+  assert.deepEqual(state.trackIds.slice(0, 3), ['smp_kick', 'close_hat', 'snare']);
+
+  state.workspace.kits.trackOrder.push('unknown_track');
+  const normalized = normalizeWorkspace(state.getExportData());
+  assert.equal(normalized.kits.trackOrder.includes('unknown_track'), false);
+  assert.deepEqual(normalized.kits.trackOrder.slice(0, 3), ['smp_kick', 'close_hat', 'snare']);
+});
+
+test('legacy workspaces without row order keep the samples-first layout', () => {
+  const legacy = createDefaultWorkspace();
+  delete legacy.kits.trackOrder;
+  legacy.kits.version = 1;
+  legacy.kits.samples = [{
+    id: 'smp_snare',
+    instrumentId: 'snare',
+    label: 'snare 1',
+    fileName: 'snare.wav',
+    path: 'samples/snare.wav',
+    kitId: 'imported',
+    kitName: 'Imported Kit',
+    mimeType: 'audio/wav',
+    data: 'data:audio/wav;base64,AAAA',
+  }];
+
+  const normalized = normalizeWorkspace(legacy);
+  assert.equal(normalized.kits.trackOrder[0], 'smp_snare');
+  assert.equal(normalized.kits.trackOrder.includes('snare'), false);
 });

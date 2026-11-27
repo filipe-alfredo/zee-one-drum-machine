@@ -32,6 +32,7 @@
       "electron/**/*"
     ],
     "win": {
+      "icon": "assets/icons/app-icon.ico",
       "target": [
         {
           "target": "nsis",
@@ -51,6 +52,12 @@
     },
     "portable": {
       "artifactName": "ZeeOne-Drum-Machine-Portable-${version}.exe"
-    }
+    },
+    "extraResources": [
+      {
+        "from": "assets/icons/app-icon.ico",
+        "to": "app-icon.ico"
+      }
+    ]
   }
 }

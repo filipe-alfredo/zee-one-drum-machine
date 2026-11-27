@@ -112,7 +112,11 @@ export class Controls {
   }
 
   openWorkspace() {
-    if (typeof window !== 'undefined' && typeof window.showOpenFilePicker === 'function') {
+    const hasDesktopOpen = typeof window !== 'undefined'
+      && window.zeeoneDesktop
+      && typeof window.zeeoneDesktop.chooseOpenPath === 'function';
+    if (hasDesktopOpen
+      || (typeof window !== 'undefined' && typeof window.showOpenFilePicker === 'function')) {
       this.onOpenWorkspacePicker();
     } else {
       this.workspaceFileInput.click();
