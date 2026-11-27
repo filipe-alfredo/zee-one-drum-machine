@@ -1,12 +1,11 @@
-import { downloadBlob } from './helpers.js';
-
 /**
  * Save-target abstraction shared by WAV exports.
  *
  * The target is requested BEFORE the (asynchronous) offline audio render so a
  * browser keeps its transient user activation. Electron supplies a native
  * dialog through the preload bridge; browsers use the File System Access API.
- * Browsers without either API fall back to a normal download.
+ * Without either API, saving fails visibly instead of dropping an
+ * auto-numbered file into the browser's Downloads folder.
  */
 
 function hasDesktopBridge() {
@@ -61,7 +60,10 @@ export async function requestSaveTarget({
     }
   }
 
-  return { method: 'download', name: suggestedName };
+  throw new Error(
+    'Saving files requires the ZeeOne Electron app or a Chromium browser '
+    + '(Chrome/Edge) on a local origin. Choose a destination there instead.',
+  );
 }
 
 /** Write the rendered blob to the target chosen above. */
@@ -90,7 +92,7 @@ export async function writeSaveTarget(target, blob, { toast = null, successMessa
       }
       await writable.close();
     } else {
-      downloadBlob(blob, target.name);
+      throw new Error(`Unsupported save target: ${target.method}`);
     }
 
     const message = typeof successMessage === 'function'

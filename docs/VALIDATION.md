@@ -109,6 +109,7 @@ The Node tests cover fixed-preset step counts and timing formulas, the short tim
 - **Blank Grid** leaves 0 rows / 0 pads but keeps all 24 factory patterns; **Default Kit** restores 23 synth rows and 368 pads.
 - **Export Active Pattern** requests a destination before rendering and writes `zeeone_rock_1_100bpm.wav` with a RIFF/WAVE header and the reported file name in the toast.
 - The File menu and loop panel both route WAV export through the same save chooser; no runtime or console errors occur.
+- With neither the Electron bridge nor `showSaveFilePicker()` available, `requestSaveTarget()` rejects with a clear error and `writeSaveTarget()` refuses unsupported targets. No `<a download>` fallback exists, so exports can no longer create `... (2)`, `(3)` copies in `Downloads`.
 
 ## Electron desktop coverage
 
@@ -148,6 +149,7 @@ The comparison navigated both servers at the same viewport, captured computed st
 - Prevented cross-harness browser collisions by giving each headless Edge instance its own debugging port.
 - Added a toolbar/File-menu **New** chooser for blank-grid or default-kit workspaces, distinct from the startup dialog.
 - Changed both WAV exports to ask for folder and file name first, then write through Electron/native or File System Access APIs instead of silently downloading.
+- Removed the silent `<a download>` fallback entirely: unsupported browsers now show an explicit save-API error instead of creating numbered duplicates in `Downloads`.
 - Added an Electron main process with a random-port local server and a narrow native-save preload bridge, plus Windows installer/portable build scripts.
 - Moved the **Patterns** title to the left with its collapse chevron at the far right, put the three pattern actions on their own line, replaced the Hidden label with an open/closed eye button, moved the top-bar chevron after the workspace status, and removed the four preset buttons from the Tracks dialog.
 
