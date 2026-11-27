@@ -4,7 +4,7 @@ A browser-based drum sequencer built with vanilla JavaScript, ES Modules, Web Au
 
 > The renderer still uses only browser APIs and has no runtime dependencies. Electron and electron-builder are **dev dependencies** used only to run/build the desktop shell; Node is not referenced by application code.
 
-> The complete scope, decisions and validation for the `feature/eternal-loop-sequence` promotion are recorded in [docs/PROMOTION.md](docs/PROMOTION.md). Export formats are described in [docs/EXPORT_FORMATS.md](docs/EXPORT_FORMATS.md).
+> The complete scope, decisions and validation for the `feature/eternal-loop-sequence` promotion are recorded in [docs/PROMOTION.md](docs/PROMOTION.md). Export formats are described in [docs/EXPORT_FORMATS.md](docs/EXPORT_FORMATS.md). Branching and pull-request rules are documented in [docs/GIT_FLOW.md](docs/GIT_FLOW.md).
 
 ## Features
 
