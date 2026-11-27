@@ -82,7 +82,7 @@ That produces:
 - `dist/ZeeOne-Drum-Machine-Portable-1.0.0.exe` — standalone portable executable.
 - `dist/win-unpacked/ZeeOne Drum Machine.exe` — unpacked app, useful for a quick smoke test.
 
-A non-interactive load check is available with `npm run electron:smoke`; it starts the Electron shell from source, waits for the renderer, then exits. The Electron main process serves the ES Modules over a random loopback port because `file://` blocks module loading. It never uses ports 8765/8766/8777. Save dialogs are native: `electron/preload.cjs` exposes only `chooseSavePath()` and `writeFile()` through `contextBridge`; the renderer has no Node access. The native menu bar is removed (`Menu.setApplicationMenu(null)`), so the app shows only its own toolbar and in-app menus.
+A non-interactive load check is available with `npm run electron:smoke`; it starts the Electron shell from source, waits for the renderer, then exits. The Electron main process serves the ES Modules over a random loopback port because `file://` blocks module loading. It never uses ports 8765/8766/8777. Save dialogs are native: `electron/preload.cjs` exposes only `chooseSavePath()` and `writeFile()` through `contextBridge`; the renderer has no Node access. The native menu bar is removed (`Menu.setApplicationMenu(null)`), so the app shows only its own toolbar and in-app menus. WAV exports never fall back to a silent download: without the Electron bridge or the Chrome/Edge picker, the app shows an error asking the user to choose a compatible browser/app and destination.
 
 ## Workspace files
 
@@ -143,7 +143,7 @@ drum-machine/
 │   │   └── toast.js            # Non-blocking notifications with undo
 │   └── utils/
 │       ├── dom.js              # Safe DOM element creation
-│       ├── helpers.js          # Clamping, IDs, file/download helpers
+│       ├── helpers.js          # Clamping, IDs and file helpers
 │       └── file-output.js      # Native picker / File System Access save target
 ├── styles/
 │   ├── fonts.css               # Local @font-face declarations
