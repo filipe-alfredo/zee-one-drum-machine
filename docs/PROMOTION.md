@@ -80,6 +80,10 @@ This document records the complete scope, decisions and validation for promoting
 - `dist/win-unpacked/resources/app.asar`
 - `dist/win-unpacked/resources/app-icon.ico`
 
+## Follow-up on `main`
+
+After the promotion, the export button was extended with a format modal offering WAV, M4A and MP3 so audio can be sent through WhatsApp Web. That work is documented separately in [EXPORT_FORMATS.md](EXPORT_FORMATS.md); the promotion record above remains the snapshot of the merge itself.
+
 ## Intentional behaviour retained
 
 - Different row BPMs can drift out of sync; this is accepted because each row is independent.

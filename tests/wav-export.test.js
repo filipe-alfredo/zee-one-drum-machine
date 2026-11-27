@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { encodeWavBlob } from '../src/audio/audio-utils.js';
-import { buildLoopWavFileName, buildWavFileName } from '../src/audio/wav-export.js';
+import { buildLoopWavFileName, buildWavFileName, trimAudioBuffer } from '../src/audio/wav-export.js';
 
 function readString(view, offset, length) {
   let value = '';
@@ -67,6 +67,25 @@ test('encoded audio has a valid 16-bit stereo WAV header', async () => {
   assert.equal(view.getInt16(48, true), 32767);
   assert.equal(view.getInt16(50, true), -32768);
   assert.equal(view.getInt16(52, true), -32768);
+});
+
+test('trimAudioBuffer exposes the cropped range to every encoder', () => {
+  const audioBuffer = {
+    numberOfChannels: 2,
+    sampleRate: 44100,
+    length: 4,
+    getChannelData(channel) {
+      return channel === 0 ? [0, 1, -1, 0.5] : [0, -1, 1, 0];
+    },
+  };
+
+  assert.equal(trimAudioBuffer(audioBuffer, 4), audioBuffer);
+  const trimmed = trimAudioBuffer(audioBuffer, 2);
+  assert.equal(trimmed.numberOfChannels, 2);
+  assert.equal(trimmed.sampleRate, 44100);
+  assert.equal(trimmed.length, 2);
+  assert.deepEqual(Array.from(trimmed.getChannelData(0)), [0, 1]);
+  assert.deepEqual(Array.from(trimmed.getChannelData(1)), [0, -1]);
 });
 
 test('WAV encoder can stop at a cropped frame count', async () => {

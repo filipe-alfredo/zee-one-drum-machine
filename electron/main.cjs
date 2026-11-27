@@ -23,6 +23,7 @@ const MIME_TYPES = new Map([
   ['.json', 'application/json; charset=utf-8'],
   ['.svg', 'image/svg+xml'],
   ['.wav', 'audio/wav'],
+  ['.m4a', 'audio/mp4'],
   ['.woff2', 'font/woff2'],
   ['.mp3', 'audio/mpeg'],
 ]);

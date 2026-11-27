@@ -4,7 +4,7 @@ A browser-based drum sequencer built with vanilla JavaScript, ES Modules, Web Au
 
 > The renderer still uses only browser APIs and has no runtime dependencies. Electron and electron-builder are **dev dependencies** used only to run/build the desktop shell; Node is not referenced by application code.
 
-> The complete scope, decisions and validation for the `feature/eternal-loop-sequence` promotion are recorded in [docs/PROMOTION.md](docs/PROMOTION.md).
+> The complete scope, decisions and validation for the `feature/eternal-loop-sequence` promotion are recorded in [docs/PROMOTION.md](docs/PROMOTION.md). Export formats are described in [docs/EXPORT_FORMATS.md](docs/EXPORT_FORMATS.md).
 
 ## Features
 
@@ -15,24 +15,24 @@ A browser-based drum sequencer built with vanilla JavaScript, ES Modules, Web Au
 - BPM control (40–240) with slider and numeric input.
 - Transport with Play / Stop, lookahead scheduling, and a synchronized playhead. The main toolbar buttons are nearly flat dark panels with neutral borders; orange appears only on hover, keyboard focus, press and the active playing state. Save is the single primary action with a soft amber fill and bright icon, while New/Open stay neutral with orange icons and Clear All/Stop are muted with gray icons. Pattern BPM badges are discreet graphite pills with soft gray text instead of solid orange. Active grid pads use the loop block's crisp orange border without the old outer glow; the left/bottom edges are inset so the pad stays exactly the same width as its cell slot.
 - Bottom **Loop Arrangement**: a vertical list of pattern rows against a horizontal 32-beat timeline. **+ Pattern** opens a modal with every workspace pattern, multiple selection, and a ▶/⏸ preview per pattern; added rows are silent until you paint cells. One ☐ cell is a quarter beat: painting a 2/4 pattern fills 2 cells, 4/4 fills 4, and 12/4 fills 12, but the painted block appears as one continuous strip with a predominantly orange 3D gradient and only a restrained deep-red edge. Clicking that strip removes the whole block, several rows may overlap in the same column, each row has its own editable BPM (there is no global loop BPM), and ✕ removes a row. **Clear Loop** asks whether to clear only the cells or the rows and cells. The painted cycle repeats in **Loop Mode** while the selected pattern stays editable: the toggle is graphite with a gray dot when off and a quiet red tint with a red dot when on, so its state is obvious at a glance.
-- **Export Active Pattern** and **Export Loop Arrangement** ask for folder and file name first, then render the WAV with the current volumes, visibility, mute, and solo settings. The loop export crops the silent tail after the last audible hit, so empty trailing timeline slots do not add seconds of silence; the active-pattern export keeps its full length. Electron uses a native Save dialog; Chrome/Edge use the File System Access API.
+- **Export Active Pattern** and **Export Loop Arrangement** open a modal with three formats: **WAV** (PCM 16-bit, instant), **M4A** (AAC, accepted by WhatsApp Web) and **MP3** (192 kbps, accepted by WhatsApp Web). After choosing, the app asks for folder and file name and renders with the current volumes, visibility, mute, and solo settings. M4A is encoded by the browser's MediaRecorder and MP3 by a vendored LAME encoder, so both take roughly the length of the audio; WAV is written immediately. The loop export crops the silent tail in every format, so empty trailing timeline slots do not add seconds of silence; the active-pattern export keeps its full length. Electron uses a native Save dialog with filters matching the chosen format; Chrome/Edge use the File System Access API.
 - Three matching chevron buttons collapse the pattern sidebar (into a narrow rail with its expand button at the top), the top toolbar (leaving toggle, logo, File and Help), and the bottom loop panel (into a rail with its expand button still at the far right). In the loop toolbar, **Loop Mode**, **+ Pattern**, **Clear Loop** and **Export Loop** sit together at the far right, immediately beside the maximize/restore and chevron controls; maximizing hides the pattern sidebar and Drum Grid so the loop fills the workspace while the top bars stay visible. The **Loop Arrangement** title has the same orange accent line as **Patterns**. All these states are visual only and are never written to the workspace.
 - The dividers beside the pattern sidebar, above the loop arrangement and between each kit name and its volume controls can be dragged with the mouse. The name column starts at 320 px (280 px on narrow windows) so all factory names fit, and its handle has a visible grip: click it or press `Enter` to widen the column just enough for a longer custom name, double-click or press `Home` to reset, or drag/use arrow keys (Shift for larger steps) for manual sizing. The shared name column and LED bar resize together; like the collapse states, sizes are visual only and are not saved.
 - The Tracks dialog uses a local draft: checkboxes only change the dialog until **Apply**; **Cancel** discards everything and the grid behind never changes mid-edit. The ▶/⏸ button auditions each drum piece and can interrupt long samples; only one preview plays at a time and closing the dialog stops it. The Drum Kit dialog uses the same compact 20 px ▶/⏸ icon buttons instead of a text **Preview** button.
 - Per-track visibility, mute, solo, and a 0–100% volume slider on every Drum Grid row. Active pads use a beveled orange-dominant gradient with a bright playhead state, without pale highlights or a heavy burgundy base; their sharp border is drawn inside the existing cell so columns never shift. **Hide Tracks** hides all rows without deleting samples or notes.
-- Master volume (0–100%) in the top toolbar beside Time Signature, applied to live playback, audition, and WAV export.
+- Master volume (0–100%) in the top toolbar beside Time Signature, applied to live playback, audition, and every export format.
 - Hidden tracks are silent. Selecting a pattern that has notes on hidden tracks asks whether to **Restore Tracks** or **Keep As Is**; keeping them hidden plays/export only the visible rows.
 - Free-form sample labels (`snare 1`, `tom grave`, …) can inherit a legacy instrument's factory-pattern notes; unrecognized names simply get their own row. Duplicate names receive a unique suffix.
 - Imported samples can be removed after import: **Use Synth / Remove** per row or **Unload All Samples** from the kit dialog or File menu, both with confirmation for bulk unload and Undo for every removal.
 - Imported sample bytes, synth-track choices, visibility, volumes, and the Drum Grid row order are embedded in the workspace JSON and restored when the workspace is reopened.
 - File-based workspace save/open with explicit filename and destination (native dialog in Electron, File System Access API in Chrome/Edge), plus JSON import fallback.
-- Offline WAV export of the active pattern or one full painted loop cycle, both written to a user-chosen path, respecting visibility, mute/solo, and both volume settings; the loop filename reports rows and beats, for example `zeeone_loop_2rows_5beats.wav`.
+- Offline export of the active pattern or one full painted loop cycle as WAV, M4A or MP3, written to a user-chosen path and respecting visibility, mute/solo, and both volume settings; the loop filename reports rows and beats, for example `zeeone_loop_2rows_5beats.m4a`.
 - Keyboard shortcuts: **Space** toggles playback, **C** clears all steps (ignored while typing in an input).
 
 ## Requirements
 
 - A modern browser with Web Audio API and ES Module support (Chrome/Edge/Firefox/Safari), or the packaged Electron app.
-- No renderer runtime dependencies. Bundled fonts are included locally.
+- No renderer runtime dependencies. Bundled fonts are included locally; the LGPL-licensed [LAME](https://lame.sourceforge.net/) encoder is vendored as a local module and loaded only for MP3 export. M4A export needs a Chromium-based browser with `audio/mp4;codecs=mp4a.40.2` support in MediaRecorder (current Chrome/Edge and Electron); WAV and MP3 work in any browser supported by the app.
 - Node.js 18+ for the test suite; Electron and electron-builder are installed as dev dependencies for desktop run/build.
 
 ## Running locally
@@ -85,7 +85,7 @@ That produces:
 - `dist/ZeeOne-Drum-Machine-Portable-1.0.0.exe` — standalone portable executable.
 - `dist/win-unpacked/ZeeOne Drum Machine.exe` — unpacked app, useful for a quick smoke test.
 
-A non-interactive load check is available with `npm run electron:smoke`; it starts the Electron shell from source, waits for the renderer, then exits. The window is created hidden, maximized at `ready-to-show`, and only then shown, so the app opens occupying the full screen without a 1440×900 flash. The Electron main process serves the ES Modules over a random loopback port because `file://` blocks module loading. It never uses ports 8765/8766/8777. File dialogs are native: `electron/preload.cjs` exposes `chooseSavePath()`, `chooseOpenPath()`, `readFile()`, `writeFile()`, `getLastWorkspace()` and `setLastWorkspace()` through `contextBridge`; the renderer has no Node access. The last workspace path is stored under `userData`, so **Open Last Workspace** survives the random renderer port. The window and packaged app use the ZeeOne mark from `assets/icons/favicon.svg`, rasterized to `assets/icons/app-icon.ico` (also copied beside `app.asar`), instead of the default Electron icon. The native menu bar is removed (`Menu.setApplicationMenu(null)`), so the app shows only its own toolbar and in-app menus. WAV exports never fall back to a silent download: without the Electron bridge or the Chrome/Edge picker, the app shows an error asking the user to choose a compatible browser/app and destination.
+A non-interactive load check is available with `npm run electron:smoke`; it starts the Electron shell from source, waits for the renderer, then exits. The window is created hidden, maximized at `ready-to-show`, and only then shown, so the app opens occupying the full screen without a 1440×900 flash. The Electron main process serves the ES Modules over a random loopback port because `file://` blocks module loading. It never uses ports 8765/8766/8777. File dialogs are native: `electron/preload.cjs` exposes `chooseSavePath()`, `chooseOpenPath()`, `readFile()`, `writeFile()`, `getLastWorkspace()` and `setLastWorkspace()` through `contextBridge`; the renderer has no Node access. The last workspace path is stored under `userData`, so **Open Last Workspace** survives the random renderer port. The window and packaged app use the ZeeOne mark from `assets/icons/favicon.svg`, rasterized to `assets/icons/app-icon.ico` (also copied beside `app.asar`), instead of the default Electron icon. The native menu bar is removed (`Menu.setApplicationMenu(null)`), so the app shows only its own toolbar and in-app menus. Exports never fall back to a silent download: without the Electron bridge or the Chrome/Edge picker, the app shows an error asking the user to choose a compatible browser/app and destination.
 
 ## Workspace files
 
@@ -113,8 +113,14 @@ drum-machine/
 │   ├── audio/
 │   │   ├── audio-engine.js     # AudioContext lifecycle, master gain, per-note gain
 │   │   ├── audio-utils.js      # Noise buffer and WAV encoding helpers
+│   │   ├── export-audio.js     # Shared render pipeline for all export formats
+│   │   ├── export-formats.js   # Format descriptors, extensions and MIME types
+│   │   ├── m4a-export.js       # AAC encoding through browser MediaRecorder
+│   │   ├── mp3-export.js       # LAME wrapper loaded on demand
 │   │   ├── sample-player.js    # Procedural synthesis, or a supplied sample buffer
-│   │   └── wav-export.js       # Shared offline render of patterns/arrangements to WAV
+│   │   └── wav-export.js       # Shared offline render of patterns/arrangements
+│   ├── vendor/
+│   │   └── lamejs.js           # Vendored LGPL LAME encoder (MP3 only)
 │   ├── sequencer/
 │   │   ├── clock.js            # Lookahead scheduler driven by AudioContext time
 │   │   ├── sequencer.js        # Pattern/arrangement sources, mixer rules, playhead callback

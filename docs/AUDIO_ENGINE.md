@@ -17,8 +17,8 @@ If `AudioContext`/`webkitAudioContext` is unavailable, `ensureStarted()` throws 
 
 | Setting | Storage | Range / default | Where it applies |
 | --- | --- | --- | --- |
-| Master volume | `workspace.globalVolume`, `AudioEngine.globalVolume` | 0–1, default `0.85` | Playback, audition, WAV export |
-| Per-track volume | `workspace.trackVolumes[trackId]` | 0–1, default `1` | Playback, audition, WAV export |
+| Master volume | `workspace.globalVolume`, `AudioEngine.globalVolume` | 0–1, default `0.85` | Playback, audition, all export formats |
+| Per-track volume | `workspace.trackVolumes[trackId]` | 0–1, default `1` | Playback, audition, all export formats |
 
 - `clampVolume()` in `utils/helpers.js` is the single normalization rule: non-finite values use the fallback, other values are clamped to 0–1. `mixer.js` exposes `getGlobalVolume()` / `getChannelVolume()` so the pure mixer rules stay reusable in Node tests.
 - The toolbar slider and numeric field are 0–100 %; the kit dialog has one `Vol` slider per row with a live percentage readout. Both are persisted with the workspace.
@@ -62,18 +62,26 @@ The wizard's ▶ Play / ⏸ Pause preview uses the same `ensureStarted()` + `dec
 
 A `setTimeout` is used only to align the visual playhead with the scheduled audio time. A `playbackGeneration` counter discards visual updates from a previous playback after Stop/Start, and `Sequencer.start()` re-checks `isPlaying` after the asynchronous `AudioContext` setup so rapid double-clicks cannot create two timers.
 
-## Offline WAV export
+## Offline render and export encoders
 
 `src/audio/wav-export.js` uses one shared `OfflineAudioContext` renderer for both exports:
 
 - stereo, 44.1 kHz, duration = `cycle events + 1 s` tail;
 - an absolute `events[]` array supplies `{ time, stepIndex, pattern }`: 16th steps for **Export Active Pattern**, or `getArrangementEvents()` for **Export Loop Arrangement** (every painted block at its row BPM in one cycle);
 - the same master gain (from `getGlobalVolume(workspace)`), per-track gain (from `getChannelVolume()`), visibility, and mute/solo rules as live playback, using the runtime `tracks` and buffers keyed by track id;
-- the resulting `AudioBuffer` is encoded to 16-bit PCM WAV (`encodeWavBlob()`). Filenames are `zeeone_<pattern>_<bpm>bpm.wav` and `zeeone_loop_<rows>rows_<beats>beats.wav`, for example `zeeone_loop_2rows_5beats.wav`.
+- the resulting `AudioBuffer` is handed to `src/audio/export-audio.js`, which applies the loop's silent-tail crop (`trimAudioBuffer()`) before choosing an encoder.
 
 `defaultTracks()` is only a fallback for the 23 legacy instruments when no runtime tracks are supplied (for example in unit tests).
 
-Export errors (missing pattern/arrangement, unsupported `OfflineAudioContext`, decode/render failure) are caught in `app.exportWav()` / `app.exportLoopWav()` and reported via toast.
+The format modal in `src/ui/export-format-dialog.js` selects one of three encoders; see [EXPORT_FORMATS.md](EXPORT_FORMATS.md) for the full rationale:
+
+- **WAV**: `encodeWavBlob()` writes 16-bit stereo PCM at 44.1 kHz immediately.
+- **M4A**: `MediaRecorder` records the rendered buffer into a live `AudioContext` as `audio/mp4;codecs=mp4a.40.2`; the recorder is stopped by `sourceNode.onended`, and progress is shown in a toast.
+- **MP3**: the lazily imported LAME module converts both channels to 16-bit PCM and encodes them at 192 kbps.
+
+File stems keep the previous shape — `zeeone_<pattern>_<bpm>bpm` and `zeeone_loop_<rows>rows_<beats>beats` — with the extension following the chosen format.
+
+Export errors (missing pattern/arrangement, unsupported `OfflineAudioContext`, unsupported M4A recorder, decode/render failure) are caught in `app.exportAudio()` and reported via toast. `app.exportWav()` and `app.exportLoopWav()` remain as direct WAV wrappers.
 
 ## Known limitations
 
@@ -83,3 +91,4 @@ Export errors (missing pattern/arrangement, unsupported `OfflineAudioContext`, d
 - Audio times above/below timing boundaries are clamped to `currentTime` at scheduling time, so a very late step may play immediately rather than in the past.
 - Only one sample per track is stored; assigning a new file replaces the old one.
 - There is no pan or effects chain; mixing is visibility, mute/solo, per-track gain, and master gain.
+- M4A encoding runs in real time, so a long exported loop takes roughly its own duration. MP3 uses a vendored LGPL encoder loaded only on demand.

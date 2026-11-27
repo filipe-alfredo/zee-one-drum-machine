@@ -1,9 +1,12 @@
 import { AudioEngine } from './audio/audio-engine.js';
+import { renderAudioExport } from './audio/export-audio.js';
+import {
+  buildExportFileName,
+  getExportFormat,
+} from './audio/export-formats.js';
 import {
   buildLoopWavFileName,
   buildWavFileName,
-  renderArrangementToWav,
-  renderPatternToWav,
 } from './audio/wav-export.js';
 import { METAL_KIT_IDS, STANDARD_KIT_IDS } from './kits/instruments.js';
 import { KitManager } from './kits/kit-manager.js';
@@ -13,6 +16,7 @@ import { Sequencer } from './sequencer/sequencer.js';
 import { AppState } from './state/app-state.js';
 import { WorkspaceFileController } from './state/workspace-file.js';
 import { Controls } from './ui/controls.js';
+import { ExportFormatDialog } from './ui/export-format-dialog.js';
 import { SequencerGrid } from './ui/grid.js';
 import { KitImportDialog } from './ui/kit-import.js';
 import { KitPanel } from './ui/kit-panel.js';
@@ -49,6 +53,7 @@ class DrumMachineApp {
     });
     this.kitManager = new KitManager(this.audioEngine);
     this.confirmDialog = new ConfirmDialog();
+    this.exportFormatDialog = new ExportFormatDialog();
     this.itemEditor = new ItemEditorDialog({
       getGroups: () => this.state.workspace.groups,
       toast: this.toast,
@@ -93,7 +98,7 @@ class DrumMachineApp {
       toast: this.toast,
       confirmDialog: this.confirmDialog,
       onLoopModeChanged: () => this.afterLoopModeChanged(),
-      onExportWav: () => this.exportLoopWav(),
+      onExportWav: () => this.promptExport('loop'),
       onToggleCollapse: () => this.toggleLoopPanel(),
       onToggleMaximize: () => this.toggleLoopMaximize(),
       onPreviewPattern: (pattern, shouldPlay) => this.setPatternPreview(pattern, shouldPlay),
@@ -137,8 +142,8 @@ class DrumMachineApp {
       onOpenWorkspacePicker: () => this.workspaceFiles.open(),
       onSaveWorkspace: () => this.saveWorkspace(),
       onSaveWorkspaceAs: () => this.workspaceFiles.save({ saveAs: true }),
-      onExportWav: () => this.exportWav(),
-      onExportLoop: () => this.exportLoopWav(),
+      onExportWav: () => this.promptExport('pattern'),
+      onExportLoop: () => this.promptExport('loop'),
       onToggleSidebar: () => this.toggleSidebar(),
       onToggleTopbar: () => this.toggleTopbar(),
       onOpenKit: () => this.kitPanel.open(),
@@ -489,61 +494,53 @@ class DrumMachineApp {
     await this.workspaceFiles.openFile(file);
   }
 
-  /**
-   * Ask for the destination first (while the click gesture is still active),
-   * then render and write the WAV to that exact file.
-   */
-  async exportWav() {
-    const pattern = this.state.activePattern;
-    if (!pattern) return;
-
-    let target;
-    try {
-      target = await requestSaveTarget({
-        suggestedName: buildWavFileName(pattern),
-        description: 'WAV audio',
-        mimeType: 'audio/wav',
-        extensions: ['wav'],
-      });
-    } catch (error) {
-      this.toast.show(`Could not choose a WAV file: ${error.message}`);
-      return;
-    }
-    if (!target) return;
-
-    try {
-      const blob = await renderPatternToWav({
-        pattern,
-        workspace: this.state.workspace,
-        tracks: this.state.tracks,
-        customBuffers: this.kitManager.getBuffers(),
-      });
-      await writeSaveTarget(target, blob, {
-        toast: this.toast,
-        successMessage: name => `Exported WAV: ${name}`,
-      });
-    } catch (error) {
-      this.toast.show(`Could not export WAV: ${error.message}`);
-    }
+  /** Open the shared format picker for either the active pattern or the loop. */
+  promptExport(kind) {
+    const isLoop = kind === 'loop';
+    this.exportFormatDialog.open({
+      title: isLoop ? 'Export Loop Arrangement' : 'Export Active Pattern',
+      message: isLoop
+        ? 'Choose the audio format for one full cycle of the painted loop. The silent tail is cropped in every format.'
+        : 'Choose the audio format for the active pattern. Hidden tracks stay silent.',
+      onSelect: formatId => this.exportAudio(kind, formatId),
+    });
   }
 
-  async exportLoopWav() {
+  /**
+   * Ask for the destination first (while the click gesture is still active),
+   * then render with the chosen encoder and write to that exact file.
+   */
+  async exportAudio(kind, formatId) {
+    const format = getExportFormat(formatId);
+    if (!format) return;
+
+    const pattern = this.state.activePattern;
+    if (kind !== 'loop' && !pattern) return;
+
+    const wavName = kind === 'loop'
+      ? buildLoopWavFileName(this.state.arrangement, this.state.workspace.patterns)
+      : buildWavFileName(pattern);
+
     let target;
     try {
       target = await requestSaveTarget({
-        suggestedName: buildLoopWavFileName(this.state.arrangement, this.state.workspace.patterns),
-        description: 'WAV audio',
-        mimeType: 'audio/wav',
-        extensions: ['wav'],
+        suggestedName: buildExportFileName(wavName, format),
+        description: format.saveDescription,
+        mimeType: format.mimeType,
+        extensions: [format.extension],
       });
     } catch (error) {
-      this.toast.show(`Could not choose a loop WAV file: ${error.message}`);
+      this.toast.show(`Could not choose a ${format.label} file: ${error.message}`);
       return;
     }
     if (!target) return;
 
     try {
-      const blob = await renderArrangementToWav({
+      if (format.id !== 'wav') this.toast.show(`Encoding ${format.label}... please wait`);
+      const blob = await renderAudioExport({
+        kind,
+        format: format.id,
+        pattern,
         arrangement: this.state.arrangement,
         patterns: this.state.workspace.patterns,
         workspace: this.state.workspace,
@@ -552,11 +549,20 @@ class DrumMachineApp {
       });
       await writeSaveTarget(target, blob, {
         toast: this.toast,
-        successMessage: name => `Exported loop WAV: ${name}`,
+        successMessage: name => `Exported ${format.label}: ${name}`,
       });
     } catch (error) {
-      this.toast.show(`Could not export loop WAV: ${error.message}`);
+      this.toast.show(`Could not export ${format.label}: ${error.message}`);
     }
+  }
+
+  /** Kept as small wrappers for direct callers and compatibility. */
+  exportWav() {
+    return this.exportAudio('pattern', 'wav');
+  }
+
+  exportLoopWav() {
+    return this.exportAudio('loop', 'wav');
   }
 
   removeSample(track) {

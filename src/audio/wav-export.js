@@ -52,7 +52,7 @@ function defaultTracks() {
  * entries, so multiple pattern rows with different BPMs can overlap in one
  * exported loop cycle.
  */
-async function renderEventsToWav({
+async function renderEventsToAudio({
   events,
   duration,
   workspace,
@@ -108,16 +108,30 @@ async function renderEventsToWav({
   const frameCount = cropSilentTail
     ? getTrimmedFrameCount(renderedBuffer, sampleRate)
     : renderedBuffer.length;
-  return encodeWavBlob(renderedBuffer, frameCount);
+  return { audioBuffer: renderedBuffer, frameCount };
 }
 
-/** Render the active pattern with OfflineAudioContext and return a WAV Blob. */
-export async function renderPatternToWav({ pattern, workspace, customBuffers = null, tracks = null }) {
+/** Plain channel carrier accepted by every encoder, including the Node tests. */
+export function trimAudioBuffer(audioBuffer, frameCount = audioBuffer.length) {
+  const frames = Math.max(0, Math.min(Math.floor(frameCount), audioBuffer.length));
+  if (frames === audioBuffer.length) return audioBuffer;
+  const channels = Array.from({ length: audioBuffer.numberOfChannels }, (_, channel) =>
+    audioBuffer.getChannelData(channel).slice(0, frames));
+  return {
+    numberOfChannels: audioBuffer.numberOfChannels,
+    length: frames,
+    sampleRate: audioBuffer.sampleRate,
+    getChannelData: channel => channels[channel],
+  };
+}
+
+/** Render the active pattern offline and return the audio buffer plus usable frame count. */
+export async function renderPatternToAudioBuffer({ pattern, workspace, customBuffers = null, tracks = null }) {
   if (!pattern) throw new Error('No active pattern to export.');
 
   const count = getStepCountForSig(pattern.timeSignature);
   const stepDuration = getStepDurationSec(pattern.bpm);
-  return renderEventsToWav({
+  return renderEventsToAudio({
     events: Array.from({ length: count }, (_, stepIndex) => ({
       time: stepIndex * stepDuration,
       stepIndex,
@@ -130,8 +144,8 @@ export async function renderPatternToWav({ pattern, workspace, customBuffers = n
   });
 }
 
-/** Render one full cycle of the painted loop grid and return a WAV Blob. */
-export async function renderArrangementToWav({
+/** Render one full cycle of the painted loop grid offline. */
+export async function renderArrangementToAudioBuffer({
   arrangement,
   patterns,
   workspace,
@@ -140,7 +154,7 @@ export async function renderArrangementToWav({
 }) {
   if (!arrangement) throw new Error('No loop arrangement to export.');
 
-  return renderEventsToWav({
+  return renderEventsToAudio({
     events: getArrangementEvents(arrangement, patterns),
     duration: getArrangementDurationSec(arrangement, patterns),
     workspace,
@@ -148,6 +162,18 @@ export async function renderArrangementToWav({
     tracks,
     cropSilentTail: true,
   });
+}
+
+/** Render the active pattern with OfflineAudioContext and return a WAV Blob. */
+export async function renderPatternToWav(options) {
+  const { audioBuffer, frameCount } = await renderPatternToAudioBuffer(options);
+  return encodeWavBlob(audioBuffer, frameCount);
+}
+
+/** Render one full loop cycle and return a WAV Blob with the silent tail cropped. */
+export async function renderArrangementToWav(options) {
+  const { audioBuffer, frameCount } = await renderArrangementToAudioBuffer(options);
+  return encodeWavBlob(audioBuffer, frameCount);
 }
 
 export function buildWavFileName(pattern) {

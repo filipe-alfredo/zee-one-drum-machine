@@ -15,6 +15,7 @@
     "build:win": "electron-builder --win"
   },
   "devDependencies": {
+    "@breezystack/lamejs": "^1.2.7",
     "electron": "^45.5.0",
     "electron-builder": "^26.18.0"
   },
@@ -36,11 +37,15 @@
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         },
         {
           "target": "portable",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ]
     },

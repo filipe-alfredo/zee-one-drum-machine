@@ -38,8 +38,8 @@
             <div class="dropdown-option" id="optOpenWorkspace">Open Workspace (.json)</div>
             <div class="dropdown-option" id="optSaveWorkspace">Save Workspace (.json)</div>
             <div class="dropdown-option" id="optSaveWorkspaceAs">Save Workspace As… (.json)</div>
-            <div class="dropdown-option" id="optExportWav">Export Active Pattern (.wav)</div>
-            <div class="dropdown-option" id="optExportLoop">Export Loop Arrangement (.wav)</div>
+            <div class="dropdown-option" id="optExportWav">Export Active Pattern...</div>
+            <div class="dropdown-option" id="optExportLoop">Export Loop Arrangement...</div>
             <div class="dropdown-sep"></div>
             <div class="dropdown-option" id="optLoadKit">Load Custom Drum Kit (WAV/MP3)</div>
             <div class="dropdown-option" id="optUnloadSamples">Unload Custom Samples (Synth)</div>
@@ -267,7 +267,7 @@
         <button class="loop-btn loop-btn--mode" id="btnLoopMode" title="Loop Mode off: click to play the painted loop" aria-pressed="false">Loop Mode: Off</button>
         <button class="loop-btn loop-btn--accent" id="btnAddLoopPattern" title="Choose workspace patterns to add as loop rows">+ Pattern</button>
         <button class="loop-btn" id="btnClearLoop" title="Clear painted blocks or reset the whole loop grid">Clear Loop</button>
-        <button class="loop-btn loop-btn--export" id="btnExportLoop" title="Render one full loop cycle to WAV">Export Loop (.wav)</button>
+        <button class="loop-btn loop-btn--export" id="btnExportLoop" title="Render one full loop cycle to WAV, M4A or MP3">Export Loop...</button>
       </div>
 
       <div class="loop-panel-actions">
@@ -312,6 +312,24 @@
       <div class="modal-footer">
         <button class="btn-secondary" id="cancelConfirmBtn">Cancel</button>
         <button class="btn-accent" id="acceptConfirmBtn">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= EXPORT FORMAT MODAL ================= -->
+  <div class="modal-backdrop" id="exportFormatModal">
+    <div class="modal-box modal-box--export-format" role="dialog" aria-modal="true" aria-labelledby="exportFormatTitle">
+      <div class="modal-header">
+        <span id="exportFormatTitle">Export Format</span>
+        <button class="modal-close" id="closeExportFormatBtn" aria-label="Close">✕</button>
+      </div>
+      <div class="modal-body">
+        <p id="exportFormatMessage" class="modal-text modal-text--tight"></p>
+        <div class="export-format-list" id="exportFormatList"></div>
+        <p class="modal-text export-format-hint">WAV is written instantly. M4A and MP3 are encoded locally in real time, so the Save dialog appears after roughly the length of the audio.</p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" id="cancelExportFormatBtn">Cancel</button>
       </div>
     </div>
   </div>
@@ -506,11 +524,11 @@
         <p><strong class="accent-strong">• Hide Tracks vs Clear All:</strong> <strong>Hide Tracks</strong> hides all drum rows on the right panel so you can build a minimal kit from scratch. <strong>Clear All</strong> erases the active notes on the current pattern. Neither removes imported samples.</p>
         <p><strong class="accent-strong">• New Workspace:</strong> The first toolbar button, <strong>New</strong>, starts either a blank grid (no visible tracks) or the 23-track default synth kit. The File menu has the same action.</p>
         <p><strong class="accent-strong">• Pattern Groups & Workspace:</strong> Collapse/expand or hide entire pattern groups in the left panel; the eye button under <strong>Patterns</strong> shows or hides the hidden groups. Click <strong>Save</strong> to export your entire Workspace (groups, patterns, visible tracks, and BPMs) to a <code>.json</code> file.</p>
-        <p><strong class="accent-strong">• WAV Exports:</strong> Both <strong>Export Active Pattern</strong> and <strong>Export Loop</strong> open a Save dialog first so you can choose the folder and file name; the suggested name uses the pattern or loop settings.</p>
+        <p><strong class="accent-strong">• Export Formats:</strong> <strong>Export Active Pattern</strong> and <strong>Export Loop</strong> ask for WAV, M4A or MP3. WAV is instant; M4A/AAC and MP3 are encoded locally in real time and are accepted by WhatsApp Web. The Save dialog then asks for the folder and file name, with the suggested name based on the pattern or loop settings.</p>
         <p><strong class="accent-strong">• Time Signature:</strong> Choose one of the fixed presets: <code>2/4</code>, <code>3/4</code>, <code>4/4</code>, <code>5/4</code>, <code>6/4</code>, <code>8/4</code>, or <code>12/4</code>.</p>
-        <p><strong class="accent-strong">• Hidden Tracks:</strong> Selecting a pattern with notes on hidden tracks asks whether to restore them or keep them as they are. Hidden tracks are silent in playback and WAV export. The Tracks dialog previews a local draft: checkboxes change only that draft until you press <strong>Apply</strong>; <strong>Cancel</strong> discards it. Use <code>▶</code> to audition any piece.</p>
+        <p><strong class="accent-strong">• Hidden Tracks:</strong> Selecting a pattern with notes on hidden tracks asks whether to restore them or keep them as they are. Hidden tracks are silent in playback and exports. The Tracks dialog previews a local draft: checkboxes change only that draft until you press <strong>Apply</strong>; <strong>Cancel</strong> discards it. Use <code>▶</code> to audition any piece.</p>
         <p><strong class="accent-strong">• Volume:</strong> <strong>Master Volume</strong> sits in the top toolbar; each row in the <strong>Drum Grid</strong> has its own volume slider. Both are saved with the workspace.</p>
-        <p><strong class="accent-strong">• Loop Arrangement:</strong> The bottom list plays one pattern per row, in order, when <strong>Loop Mode</strong> is on. Choose a pattern and click <strong>+ Pattern</strong> to append it; drag rows to reorder them, use ✕ to remove a row, and <strong>Export Loop</strong> renders one full cycle to WAV. Each pattern lasts its natural number of beats at the loop BPM.</p>
+        <p><strong class="accent-strong">• Loop Arrangement:</strong> The bottom list plays one pattern per row, in order, when <strong>Loop Mode</strong> is on. Choose a pattern and click <strong>+ Pattern</strong> to append it; drag rows to reorder them, use ✕ to remove a row, and <strong>Export Loop</strong> renders one full cycle in the format you choose. Each pattern lasts its natural number of beats at the loop BPM.</p>
         <p><strong class="accent-strong">• Collapsible Panels:</strong> The <strong>Patterns</strong> title stays on the left and its chevron sits at the far right of that bar; the top-bar chevron sits just after the workspace status; the bottom loop panel has its own chevron. Each collapses into a narrow rail and expands again; none of these visual states are saved in the workspace.</p>
         <p><strong class="accent-strong">• Resizable Panels:</strong> Drag the divider between <strong>Patterns</strong> and <strong>Drum Grid</strong> to change the sidebar width, or the divider above <strong>Loop Arrangement</strong> to change its height. Double-click a divider to reset it; arrow keys work when it is focused. Like collapses, sizes are visual only and are not saved.</p>
         <p><strong class="accent-strong">• Reorder Rows:</strong> Drag a Drum Grid row by its grip (⠿) to place it before or after another row. The new kit order is saved with the workspace and is restored when you reopen the file.</p>

@@ -2,19 +2,19 @@
 
 ## Overview
 
-The application is a browser-only ES Module project with a single composition root (`src/app.js`). There is no framework, bundler, build step, or runtime dependency. Modules fall into five layers:
+The application is a browser-only ES Module project with a single composition root (`src/app.js`). There is no framework, bundler, build step, or installed runtime dependency. The only external code is the LGPL-licensed LAME encoder vendored as a local ES Module and imported lazily for MP3 export. Modules fall into five layers:
 
 | Layer | Modules | Responsibility |
 | --- | --- | --- |
 | Composition | `src/app.js` | Creates every object, wires callbacks, implements high-level actions |
 | State | `src/state/app-state.js`, `src/state/workspace-file.js` | Workspace model/validation/CRUD, dynamic track derivation, explicit file-based persistence and last-handle memory |
-| Audio / timing | `src/audio/*`, `src/sequencer/*` | AudioContext, synthesis, sample playback, lookahead clock, mixer rules, WAV render |
+| Audio / timing | `src/audio/*`, `src/sequencer/*` | AudioContext, synthesis, sample playback, lookahead clock, mixer rules, offline render plus WAV/M4A/MP3 encoding |
 | Kits | `src/kits/*` | Legacy instrument definitions, free-label resolution, decoding, per-track sample cache, ZIP reading, base64 sample data |
 | UI | `src/ui/*` | DOM rendering and event handling; startup picker and kit import wizard; no storage logic |
 
 `index.html` contains only static markup. It links the six stylesheets and loads `src/app.js` as `<script type="module">`.
 
-The final promotion scope and validation are recorded in [PROMOTION.md](PROMOTION.md).
+The final promotion scope and validation are recorded in [PROMOTION.md](PROMOTION.md). The shared export pipeline and the three encoders are described in [EXPORT_FORMATS.md](EXPORT_FORMATS.md).
 
 ## Module responsibilities and dependencies
 
@@ -22,6 +22,9 @@ The final promotion scope and validation are recorded in [PROMOTION.md](PROMOTIO
 app.js
   ├── audio/audio-engine.js ──> audio/audio-utils.js, audio/sample-player.js,
   │                             utils/helpers.js (volume clamping)
+  ├── audio/export-audio.js ──> audio/{wav-export,m4a-export,mp3-export}.js,
+  │                             audio/audio-utils.js, audio/export-formats.js
+  │                             mp3-export.js ──> vendor/lamejs.js (lazy import)
   ├── audio/wav-export.js ────> audio/audio-utils.js, audio/sample-player.js,
   │                             kits/instruments.js (fallback tracks),
   │                             sequencer/{pattern,arrangement,mixer}.js
@@ -42,11 +45,12 @@ app.js
   ├── ui/kit-import.js ───────> kits/{zip,kit-format,kit-loader,instruments,sample-data}.js,
   │                             audio/audio-engine.js (injected), utils/{dom,helpers}.js
   ├── ui/controls.js ────────> sequencer/pattern.js (validation messages), toolbar volumes,
-  │                             loop export and sidebar/topbar collapse callbacks
+  │                             format-aware export and sidebar/topbar collapse callbacks
+  ├── ui/export-format-dialog.js -> audio/export-formats.js, export modal DOM
   ├── ui/loop-panel.js ──────> pattern picker modal with per-pattern preview,
   │                             vertical rows + horizontal beat grid, clear modal,
   │                             per-row BPM, cell painting, playhead, Loop Mode,
-  │                             loop WAV action and its own collapse toggle
+  │                             format-aware loop export and its own collapse toggle
   ├── ui/resize-handles.js ──> visual-only sidebar/loop/kit-name dividers (CSS properties)
   ├── ui/kit-panel.js ───────> per-row assignment/removal, delegated bulk unload
   └── ui/* ───────────────────> state, utils/{dom,helpers}.js

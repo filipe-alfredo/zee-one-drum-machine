@@ -1,6 +1,6 @@
 # Validation report
 
-Validation was performed after the refactor, the dynamic-track kit change, the resizable-panel/row-order additions, the Loop Arrangement redesign (vertical pattern rows, painted beat cells, and per-row BPM), the preview/visual refinements, and the final maximized-Electron/loop-toolbar polish against a pristine baseline worktree containing the original single-file application (`git` baseline commit `dbdb8a5`). The app was served over HTTP (refactor on port 8765, baseline on 8766) and driven in headless Microsoft Edge through the Chrome DevTools Protocol. All validation servers are started and stopped by `run-all-status.mjs`; no server is left in `LISTENING` state.
+Validation was performed after the refactor, the dynamic-track kit change, the resizable-panel/row-order additions, the Loop Arrangement redesign (vertical pattern rows, painted beat cells, and per-row BPM), the preview/visual refinements, the final maximized-Electron/loop-toolbar polish, and the WAV/M4A/MP3 export-format modal against a pristine baseline worktree containing the original single-file application (`git` baseline commit `dbdb8a5`). The app was served over HTTP (refactor on port 8765, baseline on 8766) and driven in headless Microsoft Edge through the Chrome DevTools Protocol. All validation servers are started and stopped by `run-all-status.mjs`; no server is left in `LISTENING` state.
 
 Native file pickers cannot be automated in headless Edge, so persistence harnesses inject a small page-level stub for `showSaveFilePicker`, `showOpenFilePicker`, and IndexedDB. The stub writes to `sessionStorage`, which lets harnesses verify file names, overwrite behavior, and reload flows without touching real user files. Each harness launches Edge on a dynamically chosen debugging port so a new run cannot attach to a previous browser that is still shutting down.
 
@@ -8,8 +8,8 @@ Native file pickers cannot be automated in headless Edge, so persistence harness
 
 | Check | Result |
 | --- | --- |
-| `node --check` on every `src/**/*.js`, `tests/**/*.js`, `scripts/*.mjs` and `electron/*.cjs` file | All 49 files pass |
-| `npm test` (focused Node tests, including the maximized Electron shell, icon bundle, native workspace path bridge, save-target bridge, loop rows/blocks, saved row order and cropped WAV encoding) | **75/75 passed** |
+| `node --check` on every `src/**/*.js`, `tests/**/*.js`, `scripts/*.mjs` and `electron/*.cjs` file | All 57 files pass |
+| `npm test` (focused Node tests, including the maximized Electron shell, icon bundle, native workspace path bridge, save-target bridge, loop rows/blocks, saved row order, cropped WAV encoding, format descriptors and real MP3 frames) | **81/81 passed** |
 | Baseline browser regression harness (including polished flat toolbar buttons, crisp grid pads, softened BPM badges and slot-safe pad borders) | **29/29 passed** |
 | Extended browser harness (checkbox draft, sample removal/Undo) | **16/16 passed** |
 | Kit import wizard harness | **16/16 passed** |
@@ -18,6 +18,7 @@ Native file pickers cannot be automated in headless Edge, so persistence harness
 | Loop panel harness (pattern picker with preview, 32-beat grid, continuous orange-dominant painted blocks, overlap, per-row BPM, clear modals, per-row playback, cropped WAV, graphite/red Loop Mode states, all action buttons beside the right-aligned collapse/maximize controls, orange title accent, collapse from maximized, sidebar layout and eye toggle) | **25/25 passed** |
 | Workspace file persistence harness | **11/11 passed** |
 | Workspace actions harness (New chooser, named WAV export) | **7/7 passed** |
+| Export formats harness (modal options/descriptions, cancel and Escape, WAV/M4A/MP3 file headers and save-dialog metadata, cropped loop MP3) | **9/9 passed** |
 | Resize + row-order harness (sidebar/loop and kit-name dividers, click-to-fit, keyboard, drag/drop, saved order) | **20/20 passed** |
 | Electron smoke + Windows build | Source shell and packaged `app.asar` load with the ZeeOne icon and native workspace bridge; maximized startup asserted in Node; NSIS installer + portable `.exe` generated in `dist/` |
 | Visual/computed-style comparison at 1440×900 | **0 computed-style differences, 0 / 1,296,000 changed pixels** |
@@ -130,7 +131,7 @@ The Node tests cover fixed-preset step counts and timing formulas, the short tim
 - The first toolbar `.tb-btn` is `#btnNew`, placed before **Open**; File → New Workspace opens the same chooser and **Cancel** closes it without changes.
 - **Blank Grid** leaves 0 rows / 0 pads but keeps all 24 factory patterns; **Default Kit** restores 23 synth rows and 368 pads.
 - **Export Active Pattern** requests a destination before rendering and writes `zeeone_rock_1_100bpm.wav` with a RIFF/WAVE header and the reported file name in the toast.
-- The File menu and loop panel both route WAV export through the same save chooser; no runtime or console errors occur.
+- The File menu and loop panel both route every chosen format through the same save chooser; no runtime or console errors occur.
 - With neither the Electron bridge nor `showSaveFilePicker()` available, `requestSaveTarget()` rejects with a clear error and `writeSaveTarget()` refuses unsupported targets. No `<a download>` fallback exists, so exports can no longer create `... (2)`, `(3)` copies in `Downloads`.
 
 ## Electron desktop coverage
@@ -180,6 +181,13 @@ The comparison navigated both servers at the same viewport, captured computed st
 - Redesigned that sequence into a vertical-row/horizontal-timeline loop grid: **+ Pattern** now opens a multi-select workspace picker with ▶/⏸ preview; rows start silent until cells are painted; one cell is a beat and painting covers the pattern's full natural length; clicking a painted cell removes the block; rows may overlap and carry their own BPM; ✕ removes a row; **Clear Loop** separates cells from rows; the timeline grows in 8-beat pages; the clock and WAV renderer use absolute events per row BPM; and the WAV name became `zeeone_loop_<rows>rows_<beats>beats.wav`. The pattern selector, global loop BPM, Remove Pattern button and reorder-by-drag were removed, with legacy sequence/lane workspaces still migrated.
 - Made the Tracks, Drum Kit, ZIP-import and loop-picker previews true ▶/⏸ toggles backed by a stoppable `AudioEngine` audition handle; previews stop when replaced, when the dialog closes, and when their sound ends. Kit dialog previews dropped the word **Preview** for a 20 px icon button. Painted loop blocks are now a single beveled strip spanning their beats, and active Drum Grid pads received the same 3D treatment. The final palette keeps orange across most of the height, removes pale highlights, and reduces the old dark-red/burgundy base to a shallow warm-red edge. The grid pads later lost their outer glow and gained the loop block's crisp inset border without changing column widths; toolbar buttons became flat with Save as the only primary, BPM badges became graphite, and Loop Mode became graphite-off / muted-red-on. The kit-name column now defaults wide enough for factory names, with a visible grip, click-to-fit and keyboard controls. Loop WAV exports now crop the silent tail after the last audible hit while active-pattern WAV export still renders its full pattern. Electron now uses the SVG-derived ZeeOne icon and a main-process last-workspace path so **Open Last Workspace** survives restarts; the collapsed sidebar expander stays at the top and the collapsed loop expander stays at the far right. All four icon previews now share one `.preview-btn` style (20 × 20, graphite idle, orange hover/focus, muted-red playing), and every collapse chevron rotates around its own bounding box instead of a fixed SVG point, so the arrow no longer drifts during or after the animation. The top-bar and loop chevrons were also moved two viewBox units upward, leaving a clear gap below the divider and above the panel outline instead of touching its lower edge.
 
+## Export format validation
+
+- Capability probes in Edge 158 and Electron 45 (Chromium 156) report `audio/mp4;codecs=mp4a.40.2` as supported and `audio/mpeg` / `audio/ogg;codecs=opus` as unsupported. A probe recording produced a valid MP4 `ftyp` box and an `mp4a` track, which is the M4A shape accepted by WhatsApp Web.
+- The format harness opens the modal from both the File menu and the loop toolbar, verifies Cancel and Escape, and exports the same active pattern in all three formats. It observed `zeeone_rock_1_100bpm.wav` with `RIFF`/`WAVE`, `.m4a` with an MP4 `ftyp` box and `audio/mp4` blob type, and `.mp3` with an MPEG frame sync (`ff fb`) and `audio/mpeg` type. Each save picker received the matching MIME type and single extension.
+- A painted loop row exported as `zeeone_loop_1rows_4beats.mp3` in about 49 KB, confirming that the silent-tail crop is applied to MP3 as well as WAV.
+- Unit tests encode real mono and stereo MP3 frames with the vendored encoder and verify the format descriptors, file-name extension replacement and `trimAudioBuffer()`.
+
 ## Known limitations
 
 - Time signatures are fixed quarter-note presets only; there is no custom `N/D` input and no legacy 6/8 or 7/8 subdivision.
@@ -187,6 +195,7 @@ The comparison navigated both servers at the same viewport, captured computed st
 - The loop is a beat grid starting at 32 columns, growing in 8-beat pages up to 512, with at most 64 rows and 512 blocks. Rows run at their own BPM and can drift; older `sequence[]`/`lanes[].blocks[]` workspaces are migrated to painted rows. There are no bars or lanes.
 - All three collapse states and both resized panel sizes are visual only and reset on reload; only the Drum Grid row order is saved.
 - No pan or effects chain; mixing is visibility, mute/solo, per-track gain, and master gain.
+- M4A encoding runs in real time, so a long loop takes roughly its own duration to export. MP3 relies on a vendored LGPL LAME module instead of a browser-native encoder.
 - Only one sample is stored per track; importing a ZIP replaces all tracks and clears the active pattern's steps. Individual samples can be removed with **Use Synth / Remove**, and the whole kit with **Unload All Samples**, both undoable.
 - Workspace files with embedded samples can become large.
 - Workspace write-back still requires Chrome/Edge or the Electron build; other browsers keep the JSON import fallback but cannot write back.
