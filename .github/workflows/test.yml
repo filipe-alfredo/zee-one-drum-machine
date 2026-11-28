@@ -1,0 +1,33 @@
+name: Test
+
+on:
+  workflow_call:
+  push:
+    branches: [develop, main]
+  pull_request:
+    branches: [develop, main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Check JavaScript syntax
+        run: |
+          find . -type f \( -name '*.js' -o -name '*.mjs' -o -name '*.cjs' \) \
+            -not -path './node_modules/*' \
+            -not -path './dist/*' \
+            -not -path './.git/*' \
+            -print0 | xargs -0 -n 1 node --check
+
+      - name: Run focused tests
+        run: npm test

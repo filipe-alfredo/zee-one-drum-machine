@@ -1,40 +1,19 @@
-name: CI
+name: Pages
 
 on:
-  push:
-    branches: [develop, main]
-  pull_request:
-    branches: [develop, main]
+  release:
+    types: [published]
 
 permissions:
   contents: read
 
 jobs:
   test:
-    name: Test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Check JavaScript syntax
-        run: |
-          find . -type f \( -name '*.js' -o -name '*.mjs' -o -name '*.cjs' \) \
-            -not -path './node_modules/*' \
-            -not -path './dist/*' \
-            -not -path './.git/*' \
-            -print0 | xargs -0 -n 1 node --check
-
-      - name: Run focused tests
-        run: npm test
+    uses: ./.github/workflows/test.yml
 
   deploy:
     name: Deploy to GitHub Pages
     needs: test
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
@@ -52,6 +31,7 @@ jobs:
           cp index.html _site/
           cp -R styles src _site/
           cp -R assets/fonts assets/icons _site/assets/
+          printf '%s\n' "${GITHUB_REF_NAME}" > _site/VERSION.txt
 
       - uses: actions/configure-pages@v5
 

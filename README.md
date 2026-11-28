@@ -47,6 +47,10 @@ npm run electron:smoke  # non-interactive load check
 
 The desktop shell serves the modules over a random local port and uses native file dialogs. See [Architecture](docs/ARCHITECTURE.md#browser-and-desktop-shell).
 
+## Releases
+
+The live GitHub Pages site follows **published releases**, not every push to `main`. Tag `vX.Y.Z` from `main`, publish the release, and CI tests that exact tag before deploying it. See [Git flow](docs/GIT_FLOW.md#tagging-and-pages).
+
 ## Workspaces and samples
 
 There is no `localStorage` autosave. Every launch shows a small **Start** dialog:
