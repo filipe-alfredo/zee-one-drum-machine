@@ -11,18 +11,10 @@ jobs:
   test:
     uses: ./.github/workflows/test.yml
 
-  deploy:
-    name: Deploy to GitHub Pages
+  build:
+    name: Build site
     needs: test
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    permissions:
-      actions: read
-      contents: read
-      pages: write
-      id-token: write
     steps:
       - uses: actions/checkout@v7
 
@@ -40,5 +32,18 @@ jobs:
         with:
           path: _site
 
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      actions: read
+      contents: read
+      pages: write
+      id-token: write
+    steps:
       - id: deployment
         uses: actions/deploy-pages@v5
