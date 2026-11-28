@@ -39,7 +39,7 @@ app.js
   ├── state/app-state.js ─────> kits/{instruments,sample-data}.js,
   │                             sequencer/factory-patterns.js, sequencer/pattern.js,
   │                             utils/helpers.js
-  ├── state/workspace-file.js ─> File System Access API + IndexedDB,
+  ├── state/workspace-file.js ─> File System Access API + IndexedDB + blob download,
   │                             state/app-state.js (injected), toast/status callbacks
   ├── ui/startup-dialog.js ───> startup modal DOM + callbacks from app.js
   ├── ui/kit-import.js ───────> kits/{zip,kit-format,kit-loader,instruments,sample-data}.js,
@@ -91,7 +91,7 @@ workspace
 - `normalizeWorkspace()` validates imported data: unknown/falsy fields get defaults, duplicate IDs are regenerated, BPM is clamped, volumes are clamped to 0–1 (default `0.85` master, `1` per track), grids are padded/truncated to the signature's step count, and unknown grid rows are preserved. Sample metadata is normalized and duplicate labels are suffixed. `kits.trackOrder[]` is filtered against the current samples/synth tracks, deduplicated, and completed with any missing ids in canonical order. Older `kits.version: 1` workspaces are upgraded by adding a synth track for every legacy instrument without a sample.
 - `normalizeArrangement()` validates the saved loop grid: unknown pattern ids are dropped, duplicate row/block ids are regenerated, each row BPM is clamped to 40–240, block lengths follow the pattern signature, and the timeline is clamped to 32–512 beats. Legacy `sequence[]` entries are laid back-to-back as blocks on rows grouped by pattern id (using the old global BPM); legacy `lanes[].blocks[]` keep their saved start beat. `AppState` exposes `addLoopRow`, `addLoopRows`, `removeLoopRow`, `setLoopRowBpm`, `toggleLoopBlock`, `clearLoopBlocks`, `clearLoopRows`, and `setLoopEnabled`; deleting a pattern removes its row from the loop.
 - `replaceKitSamples()` normalizes the imported samples, writes `synthTracks: []`, resets the mixer maps (including per-track volumes) while keeping `globalVolume`, and rebuilds the active grid as empty rows for the new track keys. `addKitSamples()` is a compatibility alias; the wizard always replaces the whole kit.
-- `setTrackSample()` replaces the sample on one track (manual **Assign File**), while `removeTrackSample()` removes it and restores a legacy synth row when possible (**Use Synth / Remove**), keeping that row's saved position. `moveTrack()` reorders `kits.trackOrder[]` and persists it; unknown ids and self-moves are ignored. `captureKitsState()` / `restoreKitsState()` snapshot the kit (including row order) plus visibility/volume/mute/solo maps so `app.js` can offer Undo after a removal. `syncPatternTracks()` adds synth rows for factory-pattern instruments that have notes but no covering sample; it never changes visibility. `ensureTracksForPattern()` persists those changes when a pattern is selected.
+- `setTrackSample()` replaces the sample on one track (manual **Assign File**), while `removeTrackSample()` removes it and restores a legacy synth row when possible (**Use Synth / Remove**), keeping that row's saved position. `moveTrack()` reorders `kits.trackOrder[]` and persists it; unknown ids and self-moves are ignored. `captureKitsState()` / `restoreKitsState()` snapshot the kit (including row order) plus visibility/volume/mute/solo maps so `app.js` can offer Undo after a removal. `syncPatternTracks()` adds synth rows for factory-pattern instruments that have notes but no covering sample; it never changes visibility. `ensureTracksForPattern()` persists those changes when a pattern is selected. `isFactoryPattern()` gates the `↺` restore button; `capturePatternState()` / `restorePatternState()` provide Undo, while `restoreActiveFactoryPattern()` rewrites only the selected factory pattern's steps, BPM and signature without touching the kit, row order, visibility, mixer maps or loop arrangement.
 - `getHiddenTracksForPattern(pattern)` lists runtime tracks that are hidden **and** have at least one active step in the pattern. `setTracksVisible(ids, true)` reveals them when the user confirms the restore dialog.
 - `setGlobalVolume()` / `setTrackVolume()` clamp and persist gains. Both are mirrored by `mixer.js` getters used by playback, audition, and WAV export.
 - Every mutating method (`setBpm`, `setStep`, CRUD, presets, etc.) calls `persist()`, which only notifies the file controller. `AppState` never writes to disk or browser storage.
@@ -111,7 +111,7 @@ workspace
 - `Sequencer.getScheduleSource()` chooses the active pattern, the painted loop, or a temporary preview override used by the pattern picker. Enabling/disabling Loop Mode stops playback first so the chosen source always restarts at the beginning of its cycle.
 - `LoopPanel` owns the pattern picker (including ▶/⏸ preview), vertical rows, cell painting/removal, per-row BPM, the two Clear Loop actions, Loop Mode, loop WAV export, and its two right-aligned toolbar controls: collapse/expand and maximize/restore. Rows reference pattern ids, so editing a pattern updates every row that uses it. Painting one cell inserts one complete pattern occurrence: its beat length comes from the time signature (four 16th steps per beat). The timeline grows in 8-beat pages when painting reaches the right edge.
 - Three collapse buttons are owned by `app.js` via body classes: `body.sidebar-collapsed` leaves a 42 px rail inside the sidebar, `body.topbar-collapsed` hides `.main-toolbar` while keeping logo/File/Help, and `body.loop-collapsed` shrinks the bottom panel to a rail. `body.loop-maximized` hides `.workspace` and the loop splitter so the loop panel takes the full area below the top bars; it is mutually exclusive with the collapsed rail, and clicking either control restores the other state first. `installResizeHandles()` binds the zero-size separators to `--sidebar-width` / `--loop-height` CSS custom properties; `installTrackNameResize()` delegates from `#sequencerMatrix` to the per-row `.track-name-resizer` handles and writes `--track-header-width`, which also drives `.leds-bar`'s left margin. Pointer drag, arrow keys and double-click reset only those properties. No `AppState` mutation occurs for collapse, maximize or resize, so none of these visual states are saved in the workspace.
-- Drum Grid row drag/drop is owned by `SequencerGrid`: a `dragstart` on the track header carries the track id, rows show before/after drop indicators, and `drop` calls `state.moveTrack()` followed by `grid.render()`. The `.track-name-resizer` handle stops that drag so resizing the name column never reorders rows. Unlike resize/collapse, the order is saved with `kits.trackOrder[]` and survives reopening the workspace.
+- Drum Grid row drag/drop is owned by `SequencerGrid`: only the `.track-drag-grip` is `draggable` and its `dragstart` writes the track id under a private MIME type. Rows show before/after indicators only for that type, and `drop` calls `state.moveTrack()` followed by `grid.render()`. The header, volume slider, mixer buttons and `.track-name-resizer` cannot start a reorder. Unlike resize/collapse, the order is saved with `kits.trackOrder[]` and survives reopening the workspace.
 - Dialog lists are rendered when opened (`open()`), while external state changes use `refreshIfOpen()` to avoid adding hidden DOM nodes that the original application did not have.
 - `ConfirmDialog` supports independent accept/cancel labels and callbacks. Cancel runs only for the explicit **Cancel** button; the ✕ close button dismisses without side effects.
 
@@ -120,10 +120,82 @@ workspace
 - All paths are relative (`assets/...`, `styles/...`, `src/...`); there are no remote resources (fonts are local).
 - Renderer/application code still contains no Node.js or direct Electron imports. Node/Electron code lives only in `scripts/serve.mjs`, `electron/main.cjs`, and `electron/preload.cjs`; none of it is imported by the app. `electron/main.cjs` creates the `BrowserWindow` with `show: false`, calls `maximize()` on `ready-to-show`, then `show()`, so the desktop start is already full screen without a resize flash.
 - `assets/drumkits/**` remains gitignored: user-provided sample folders are treated as user content. Imported samples are still embedded in the workspace JSON.
-- Workspace save/open uses `showSaveFilePicker()` / `showOpenFilePicker()` and `FileSystemWritableFileStream` in Chrome/Edge. Other browsers retain the `<input type="file">` import fallback but cannot write back. In Electron the same renderer code detects `window.zeeoneDesktop`, so **New/Open/Save/Save As/Open Last** all use native dialogs and a path-based handle adapter through the preload bridge while `AppState` stays unchanged.
-- WAV exports call `requestSaveTarget()` **before** the offline render, preserving the browser's transient user activation. `writeSaveTarget()` then writes through the Electron bridge or a `FileSystemWritableFileStream`. When neither save API exists, `requestSaveTarget()` rejects with a clear message and the export reports the error instead of silently downloading an auto-numbered file into `Downloads`. The user always sees a suggested name based on the pattern/loop and can change it and the folder.
+- Workspace save/open uses `showSaveFilePicker()` / `showOpenFilePicker()` and `FileSystemWritableFileStream` in Chrome/Edge. Other browsers retain the `<input type="file">` import fallback; **Save** downloads a JSON file through an `<a download>` link instead of writing back to a chosen path. That download can be reopened normally, but there is no writable handle, so auto-save is unavailable until the file is opened with a picker-capable browser. In Electron the same renderer code detects `window.zeeoneDesktop`, so **New/Open/Save/Save As/Open Last** all use native dialogs and a path-based handle adapter through the preload bridge while `AppState` stays unchanged.
+- WAV exports call `requestSaveTarget()` **before** the offline render, preserving the browser's transient user activation. `writeSaveTarget()` then writes through the Electron bridge, a `FileSystemWritableFileStream`, or — when neither save API exists — a regular browser download with the suggested name. The user always sees a suggested name based on the pattern/loop; only the native/picker paths allow choosing a different folder.
 - `electron/main.cjs` serves the ES Modules from a random loopback port because `file://` blocks module loading. It never binds 8765/8766/8777. The preload exposes `chooseSavePath()`, `chooseOpenPath()`, `readFile()`, `writeFile()`, `getLastWorkspace()` and `setLastWorkspace()`; `nodeIntegration` is off and `contextIsolation`/`sandbox` are on. One-shot save targets stay in a main-process map keyed by an opaque request id, while workspace auto-save reuses the already chosen path; the last path is persisted under `userData` so **Open Last Workspace** survives restarts. The window and installer use `assets/icons/app-icon.ico`, rasterized from `favicon.svg`; the packaged copy lives in `resources/` outside `app.asar`.
 - `NewWorkspaceDialog` is the first toolbar button and File-menu action. It calls `app.createWorkspace('blank')` (factory patterns, no visible tracks) or `app.createWorkspace('default')` (23 synth tracks), clears the file handle, and reuses the same `resetWorkspace()` path as the startup dialog.
 - `npm run electron` starts the shell from source; `npm run build:win` produces installer and portable executables in `dist/`; `npm run electron:smoke` loads and closes it non-interactively.
 
-See [AUDIO_ENGINE.md](AUDIO_ENGINE.md), [SEQUENCER.md](SEQUENCER.md), and [DRUMKITS.md](DRUMKITS.md) for subsystem details.
+See [AUDIO_ENGINE.md](AUDIO_ENGINE.md), [SEQUENCER.md](SEQUENCER.md), and [DRUMKITS.md](DRUMKITS.md) for subsystem details. For user-facing behavior, see [USER_GUIDE.md](USER_GUIDE.md) and [WORKSPACE.md](WORKSPACE.md).
+
+## Repository layout
+
+```text
+drum-machine/
+├── index.html                  # Static markup and single ES Module entry point
+├── electron/
+│   ├── main.cjs                # Desktop shell: loopback server, native save IPC
+│   └── preload.cjs             # Narrow contextBridge for save dialog/writes
+├── src/
+│   ├── app.js                  # Composition root: wiring and high-level actions
+│   ├── audio/
+│   │   ├── audio-engine.js     # AudioContext lifecycle, master gain, per-note gain
+│   │   ├── audio-utils.js      # Noise buffer and WAV encoding helpers
+│   │   ├── export-audio.js     # Shared render pipeline for all export formats
+│   │   ├── export-formats.js   # Format descriptors, extensions and MIME types
+│   │   ├── m4a-export.js       # AAC encoding through browser MediaRecorder
+│   │   ├── mp3-export.js       # LAME wrapper loaded on demand
+│   │   ├── sample-player.js    # Procedural synthesis, or a supplied sample buffer
+│   │   └── wav-export.js       # Shared offline render of patterns/arrangements
+│   ├── vendor/
+│   │   └── lamejs.js           # Vendored LGPL LAME encoder (MP3 only)
+│   ├── sequencer/
+│   │   ├── clock.js            # Lookahead scheduler driven by AudioContext time
+│   │   ├── sequencer.js        # Pattern/arrangement sources, mixer rules, playhead callback
+│   │   ├── arrangement.js      # Loop rows/blocks, timeline growth, limits, events, migration
+│   │   ├── pattern.js          # Step counts, timing, validation, grid transforms
+│   │   ├── factory-patterns.js # The 24 factory patterns
+│   │   └── mixer.js            # Visibility, mute/solo, and volume rules
+│   ├── kits/
+│   │   ├── instruments.js      # Legacy instrument IDs, names, and label keywords
+│   │   ├── kit-loader.js       # Free-label resolution and file decoding
+│   │   ├── kit-manager.js      # Per-track sample buffer cache and raw bytes
+│   │   ├── kit-format.js       # Filename/kit-id sanitizers (legacy helpers)
+│   │   ├── sample-data.js      # Base64 data URLs and ZIP path sanitization
+│   │   └── zip.js              # Dependency-free ZIP read/write (native streams)
+│   ├── state/
+│   │   ├── app-state.js        # Workspace model, validation, dynamic tracks, CRUD
+│   │   └── workspace-file.js   # File System Access / download persistence + last-handle memory
+│   ├── ui/
+│   │   ├── controls.js         # Toolbar, menus, tempo, volumes, shortcuts
+│   │   ├── startup-dialog.js   # New / Open / Open Last picker
+│   │   ├── new-workspace-dialog.js # Blank vs default-kit chooser
+│   │   ├── grid.js             # Sequencer matrix, track controls, row drag/drop, playhead display
+│   │   ├── resize-handles.js   # Visual-only sidebar/loop divider resizing
+│   │   ├── patterns-panel.js   # Pattern/group sidebar and active factory restore
+│   │   ├── loop-panel.js       # Loop pattern picker, row/cell grid, modals, playhead, Loop Mode
+│   │   ├── tracks-panel.js     # Track visibility and preview dialog
+│   │   ├── kit-panel.js        # One preview/assign row per sample
+│   │   ├── kit-import.js       # ZIP import wizard UI
+│   │   ├── modals.js           # Confirm and item-editor dialogs
+│   │   └── toast.js            # Non-blocking notifications with undo
+│   └── utils/
+│       ├── dom.js              # Safe DOM element creation
+│       ├── helpers.js          # Clamping, IDs and file helpers
+│       └── file-output.js      # Native picker / File System Access / download save target
+├── styles/
+│   ├── fonts.css               # Local @font-face declarations
+│   ├── themes.css              # Design tokens (colors, variables)
+│   ├── main.css                # Page shell, menubar, dialogs
+│   ├── controls.css            # Transport and slider controls
+│   ├── sequencer.css           # Grid, pads, LED bar, sidebar
+│   └── loop.css                # Loop timeline, cells, modals, collapse rails
+├── assets/
+│   ├── drumkits/               # Optional local sample folders (gitignored, not published)
+│   ├── fonts/                  # Locally bundled web fonts (OFL)
+│   └── icons/favicon.svg
+├── docs/                       # User and subsystem documentation
+├── tests/                      # Focused Node.js logic tests
+├── scripts/serve.mjs           # Optional dev-only static server (`npm start`)
+└── package.json                # ESM marker, start/test/electron/build scripts
+```

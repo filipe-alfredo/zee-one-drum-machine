@@ -585,6 +585,16 @@
       font-weight: 700;
     }
 
+    .mini-pill-btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    .mini-pill-btn:disabled:hover {
+      border-color: var(--border-strong);
+      color: var(--text-primary);
+    }
+
     .mini-pill-btn--icon {
       width: 27px;
       height: 24px;

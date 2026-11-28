@@ -20,7 +20,7 @@ test('invalid data URLs are rejected', () => {
 });
 
 test('ZIP paths keep folders but remove traversal', () => {
-  assert.equal(sanitizeRelativePath('Vortex/ALL MICS/KD_D_Vortex_01.wav'), 'Vortex/ALL_MICS/KD_D_Vortex_01.wav');
+  assert.equal(sanitizeRelativePath('Demo Kit/ALL MICS/KD_D_Demo_01.wav'), 'Demo_Kit/ALL_MICS/KD_D_Demo_01.wav');
   assert.equal(sanitizeRelativePath('../../etc/passwd'), 'etc/passwd');
   assert.equal(sanitizeRelativePath('\\kit\\samples\\snare.wav'), 'kit/samples/snare.wav');
 });

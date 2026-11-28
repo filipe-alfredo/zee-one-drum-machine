@@ -19,6 +19,7 @@ export class PatternsPanel {
     this.container = document.getElementById('patternsList');
     this.searchInput = document.getElementById('patternSearch');
     this.hiddenToggle = document.getElementById('btnToggleHiddenGroups');
+    this.restoreButton = document.getElementById('btnRestoreActivePattern');
 
     this.searchInput.addEventListener('input', () => this.render());
     document.getElementById('btnNewGroup').addEventListener('click', () => this.createGroup());
@@ -26,6 +27,7 @@ export class PatternsPanel {
       const activePattern = this.state.activePattern;
       this.createPatternInGroup(activePattern ? activePattern.groupId : null);
     });
+    this.restoreButton.addEventListener('click', () => this.restoreActivePattern());
     this.hiddenToggle.addEventListener('click', () => {
       this.state.setShowHiddenGroups(!this.state.workspace.showHiddenGroups);
       this.onChange();
@@ -125,6 +127,7 @@ export class PatternsPanel {
     }
 
     this.updateHiddenToggle();
+    this.updateRestoreButton();
   }
 
   buildPatternItem(pattern) {
@@ -321,5 +324,36 @@ export class PatternsPanel {
     const label = showing ? 'Hide hidden pattern groups' : 'Show hidden pattern groups';
     this.hiddenToggle.title = label;
     this.hiddenToggle.setAttribute('aria-label', label);
+  }
+
+  updateRestoreButton() {
+    const pattern = this.state.activePattern;
+    const isFactory = Boolean(pattern) && this.state.isFactoryPattern(pattern.id);
+    this.restoreButton.disabled = !isFactory;
+    this.restoreButton.title = isFactory
+      ? `Restore "${pattern.name}" to its factory steps, BPM and time signature`
+      : 'The active pattern is not a factory pattern';
+    this.restoreButton.setAttribute('aria-label', this.restoreButton.title);
+  }
+
+  restoreActivePattern() {
+    const pattern = this.state.activePattern;
+    if (!pattern || !this.state.isFactoryPattern(pattern.id)) return;
+
+    this.confirmDialog.open({
+      title: 'Restore Factory Pattern',
+      message: `Replace "${pattern.name}" with its shipped steps, BPM and time signature? Custom patterns, imported samples and the visible grid rows stay exactly as they are.`,
+      confirmLabel: 'Restore Pattern',
+      danger: true,
+      onConfirm: () => {
+        const { restored, snapshot } = this.state.restoreActiveFactoryPattern();
+        this.onChange();
+        if (!restored) return;
+        this.toast.show(`Restored "${pattern.name}" to factory settings`, () => {
+          this.state.restorePatternState(snapshot);
+          this.onChange();
+        });
+      },
+    });
   }
 }

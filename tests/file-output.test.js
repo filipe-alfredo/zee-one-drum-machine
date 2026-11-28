@@ -11,6 +11,42 @@ function withWindow(value, run) {
   });
 }
 
+function withDownload(run) {
+  const previousDocument = globalThis.document;
+  const previousCreate = URL.createObjectURL;
+  const previousRevoke = URL.revokeObjectURL;
+  const downloads = [];
+  const blobs = [];
+
+  globalThis.document = {
+    createElement(tag) {
+      assert.equal(tag, 'a');
+      const link = {
+        hidden: false,
+        appendChild() {},
+        remove() {},
+      };
+      link.click = () => downloads.push({ name: link.download, href: link.href });
+      return link;
+    },
+    body: { appendChild() {} },
+  };
+  URL.createObjectURL = blob => {
+    blobs.push(blob);
+    return 'blob:test';
+  };
+  URL.revokeObjectURL = () => {};
+
+  return Promise.resolve(run({ downloads, blobs })).finally(() => {
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+    if (previousCreate === undefined) delete URL.createObjectURL;
+    else URL.createObjectURL = previousCreate;
+    if (previousRevoke === undefined) delete URL.revokeObjectURL;
+    else URL.revokeObjectURL = previousRevoke;
+  });
+}
+
 test('export targets use the native Electron dialog when available', async () => {
   let requested = null;
   await withWindow({
@@ -95,26 +131,34 @@ test('writeSaveTarget uses the browser File System Access API without Electron',
   });
 });
 
-test('requestSaveTarget rejects instead of downloading without a save API', async () => {
+test('requestSaveTarget falls back to a download without a save API', async () => {
   await withWindow({}, async () => {
-    await assert.rejects(
-      requestSaveTarget({ suggestedName: 'zeeone_loop_4bars_100bpm.wav' }),
-      /requires the ZeeOne Electron app or a Chromium browser/,
-    );
+    const target = await requestSaveTarget({ suggestedName: 'zeeone_loop_4bars_100bpm.wav' });
+    assert.deepEqual(target, {
+      method: 'download',
+      name: 'zeeone_loop_4bars_100bpm.wav',
+    });
   });
 });
 
-test('writeSaveTarget reports unsupported targets without downloading', async () => {
+test('writeSaveTarget downloads the rendered bytes without a save API', async () => {
   const messages = [];
-  await withWindow({}, async () => {
+  const blob = new Blob([new Uint8Array([82, 73, 70, 70])], { type: 'audio/wav' });
+  await withDownload(async ({ downloads, blobs }) => {
     const saved = await writeSaveTarget(
       { method: 'download', name: 'zeeone_loop_4bars_100bpm.wav' },
-      new Blob([new Uint8Array([1])]),
-      { toast: { show: message => messages.push(message) } },
+      blob,
+      {
+        toast: { show: message => messages.push(message) },
+        successMessage: name => `Exported WAV: ${name}`,
+      },
     );
 
-    assert.equal(saved, false);
-    assert.equal(messages.length, 1);
-    assert.match(messages[0], /Unsupported save target: download/);
+    assert.equal(saved, true);
+    assert.equal(downloads.length, 1);
+    assert.equal(downloads[0].name, 'zeeone_loop_4bars_100bpm.wav');
+    assert.equal(downloads[0].href, 'blob:test');
+    assert.deepEqual(blobs, [blob]);
+    assert.deepEqual(messages, ['Exported WAV: zeeone_loop_4bars_100bpm.wav']);
   });
 });

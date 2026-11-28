@@ -153,7 +153,7 @@ class DrumMachineApp {
 
     this.startup = new StartupDialog({
       onNewProject: () => this.startNewProject(),
-      onOpenFile: () => this.workspaceFiles.open(),
+      onOpenFile: () => this.controls.openWorkspace(),
       onOpenLast: () => this.workspaceFiles.openLast(),
       getLastInfo: () => this.workspaceFiles.getLastInfo(),
     });

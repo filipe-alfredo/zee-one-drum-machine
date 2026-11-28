@@ -62,6 +62,7 @@ The panel at the bottom of the page is a beat grid: each workspace pattern added
 - Selecting a pattern calls `syncPatternTracks()`: legacy rows with active notes get a synth track when no sample claims them. **Visibility is never changed automatically.** A hidden track stays hidden and silent.
 - Before selecting, `getHiddenTracksForPattern()` returns hidden tracks with at least one active note in that pattern. `app.afterPatternSelected()` then opens a dialog: **Restore Tracks** reveals exactly those rows, while **Keep As Is** leaves them hidden and silent during playback and WAV export.
 - The sidebar supports group collapse/hide, search, new/rename/delete group, new/rename/duplicate/delete pattern, and hidden-group toggling. The factory group cannot be deleted; deleting a group moves its patterns to another group. Deleting the last pattern is rejected.
+- The `↺` button beside **+ Pattern** is enabled only when the active pattern is one of the 24 factory patterns. It restores that pattern's steps, BPM and time signature from `FACTORY_PATTERNS`; its name, group, custom patterns, kit, row order, visibility, mixer maps and loop arrangement stay as they are. The toast offers Undo.
 - Every edit notifies the workspace-file controller. Nothing is written until a workspace file is saved/opened; while that file is active, changes are debounced back to it. “Clear All” empties only the active grid and offers Undo via the toast; it does not remove tracks. “Hide All” hides every track (notes preserved) and also offers Undo.
 - Importing a ZIP replaces the kit and clears the active pattern's grid, so imported samples start with an empty pattern. The pattern name, BPM, signature, and other patterns are untouched.
 
@@ -76,7 +77,7 @@ The panel at the bottom of the page is a beat grid: each workspace pattern added
 ## Grid interaction
 
 - Each visible track row has an audition button, mute (`M`), solo (`S`), a 0–100% volume slider, and step pads. The pad state writes straight to `state.setStep()`.
-- Drag a row by its grip (⠿) to drop it before or after another row. `state.moveTrack()` updates the saved `kits.trackOrder[]`, then the grid re-renders in the new order. Pattern keys are assigned before sorting, so the same notes keep playing on the same tracks after a reorder; the new order travels in the workspace JSON.
+- Drag a row **only by its grip (⠿)** to drop it before or after another row. The header, volume slider, M/S/load/hide buttons and name resizer never start a reorder. `state.moveTrack()` updates the saved `kits.trackOrder[]`, then the grid re-renders in the new order. Pattern keys are assigned before sorting, so the same notes keep playing on the same tracks after a reorder; the new order travels in the workspace JSON.
 - Auditioning uses the same per-track volume as scheduled playback and is silent when the context cannot start (an error toast is shown). The Tracks dialog has a ▶ button per drum piece that uses the same audition path.
 - The header shows the active pattern name and step count; a 0-track empty state offers kit presets.
 - Track visibility presets: Standard (8), Metal/Rock (11), All (all current tracks), Hide All. They work on runtime track ids, falling back to legacy instrument ids, so imported rows can be shown/hidden too. Visibility is stored in the same workspace file as note data.

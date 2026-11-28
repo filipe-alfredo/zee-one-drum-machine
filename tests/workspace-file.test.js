@@ -2,6 +2,49 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { WorkspaceFileController } from '../src/state/workspace-file.js';
 
+function withDownload(run) {
+  const previousWindow = globalThis.window;
+  const previousDocument = globalThis.document;
+  const previousCreate = URL.createObjectURL;
+  const previousRevoke = URL.revokeObjectURL;
+  const downloads = [];
+  const blobs = [];
+  const revoked = [];
+
+  globalThis.window = { };
+  globalThis.document = {
+    createElement(tag) {
+      assert.equal(tag, 'a');
+      const link = {
+        hidden: false,
+        appendChild() {},
+        remove() {},
+      };
+      link.click = () => downloads.push({ name: link.download, href: link.href });
+      return link;
+    },
+    body: { appendChild() {} },
+  };
+  URL.createObjectURL = blob => {
+    blobs.push(blob);
+    return 'blob:workspace';
+  };
+  URL.revokeObjectURL = url => revoked.push(url);
+
+  return Promise.resolve(run({ downloads, blobs, revoked })).finally(() => {
+    if (previousWindow === undefined) delete globalThis.window;
+    else globalThis.window = previousWindow;
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+    if (previousCreate === undefined) delete URL.createObjectURL;
+    else URL.createObjectURL = previousCreate;
+    if (previousRevoke === undefined) delete URL.revokeObjectURL;
+    else URL.revokeObjectURL = previousRevoke;
+  });
+}
+
+// The Electron bridge is fully stubbed below. These are virtual keys used to
+// assert path handling; no test touches the machine's real filesystem.
 function createDesktop(overrides = {}) {
   const calls = {
     reads: [],
@@ -18,7 +61,7 @@ function createDesktop(overrides = {}) {
       calls.saveOptions = options;
       return overrides.saveChoice || {
         canceled: false,
-        filePath: 'C:\\projects\\saved.json',
+        filePath: 'virtual/saved.json',
         name: 'saved.json',
       };
     },
@@ -26,7 +69,7 @@ function createDesktop(overrides = {}) {
       calls.openOptions = options;
       return overrides.openChoice || {
         canceled: false,
-        filePath: 'C:\\projects\\opened.json',
+        filePath: 'virtual/opened.json',
         name: 'opened.json',
       };
     },
@@ -76,8 +119,37 @@ function createController(api) {
   return { controller, state, messages, statuses };
 }
 
+test('save downloads a workspace file when no picker API is available', async () => {
+  await withDownload(async ({ downloads, blobs }) => {
+    const messages = [];
+    const statuses = [];
+    const state = {
+      getExportData() {
+        return { marker: 'saved' };
+      },
+    };
+    const controller = new WorkspaceFileController({
+      state,
+      toast: { show: message => messages.push(message) },
+      onStatus: status => statuses.push(status),
+    });
+
+    assert.equal(await controller.save(), true);
+    assert.equal(downloads.length, 1);
+    assert.equal(downloads[0].name, 'zeeone_drum_workspace.json');
+    assert.equal(downloads[0].href, 'blob:workspace');
+    assert.equal(blobs.length, 1);
+    assert.equal(blobs[0].type, 'application/json');
+    assert.deepEqual(messages, [
+      'Workspace downloaded: zeeone_drum_workspace.json (open it to enable auto-save)',
+    ]);
+    assert.equal(controller.handle, null);
+    assert.deepEqual(JSON.parse(await blobs[0].text()), { marker: 'saved' });
+  });
+});
+
 test('Electron Open Last restores the native path remembered by the main process', async () => {
-  const filePath = 'C:\\projects\\last.json';
+  const filePath = 'virtual/last.json';
   const { api, calls } = createDesktop({
     last: { filePath, name: 'last.json' },
     files: { [filePath]: JSON.stringify({ bpm: 123 }) },
@@ -96,7 +168,7 @@ test('Electron Open Last restores the native path remembered by the main process
 });
 
 test('Electron Save remembers the chosen path and auto-save reuses it', async () => {
-  const filePath = 'C:\\projects\\saved.json';
+  const filePath = 'virtual/saved.json';
   const { api, calls } = createDesktop();
   const { controller, messages } = createController(api);
 
@@ -117,7 +189,7 @@ test('Electron Save remembers the chosen path and auto-save reuses it', async ()
 });
 
 test('Electron Open uses the native picker and keeps the selected file writable', async () => {
-  const filePath = 'C:\\projects\\opened.json';
+  const filePath = 'virtual/opened.json';
   const { api, calls } = createDesktop({
     files: { [filePath]: JSON.stringify({ name: 'opened' }) },
   });

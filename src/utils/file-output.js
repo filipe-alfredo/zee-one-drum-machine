@@ -4,8 +4,8 @@
  * The target is requested BEFORE the (asynchronous) offline audio render so a
  * browser keeps its transient user activation. Electron supplies a native
  * dialog through the preload bridge; browsers use the File System Access API.
- * Without either API, saving fails visibly instead of dropping an
- * auto-numbered file into the browser's Downloads folder.
+ * Without either API, a regular browser download is used instead: there is no
+ * chosen folder or write-back handle, but the export still works everywhere.
  */
 
 function hasDesktopBridge() {
@@ -16,6 +16,22 @@ function hasDesktopBridge() {
 
 function hasPickerApi() {
   return typeof window !== 'undefined' && typeof window.showSaveFilePicker === 'function';
+}
+
+/** Last-resort save target: let the browser handle the download. */
+export function downloadBlob(blob, name) {
+  if (typeof document === 'undefined' || typeof URL.createObjectURL !== 'function') return false;
+
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = name;
+  link.hidden = true;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  return true;
 }
 
 /** Ask where to save. Returns null when the user cancels. */
@@ -60,10 +76,7 @@ export async function requestSaveTarget({
     }
   }
 
-  throw new Error(
-    'Saving files requires the ZeeOne Electron app or a Chromium browser '
-    + '(Chrome/Edge) on a local origin. Choose a destination there instead.',
-  );
+  return { method: 'download', name: suggestedName };
 }
 
 /** Write the rendered blob to the target chosen above. */
@@ -91,6 +104,10 @@ export async function writeSaveTarget(target, blob, { toast = null, successMessa
         throw error;
       }
       await writable.close();
+    } else if (target.method === 'download') {
+      if (!downloadBlob(blob, target.name)) {
+        throw new Error('This browser cannot download files.');
+      }
     } else {
       throw new Error(`Unsupported save target: ${target.method}`);
     }

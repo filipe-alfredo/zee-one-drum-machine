@@ -41,7 +41,7 @@ Factory patterns store notes by legacy instrument ID. When a pattern is selected
 - if a sample track claims that instrument, it is **not** automatically revealed;
 - otherwise a synth track is added for that instrument.
 
-Only missing rows are added. Visibility is left untouched. If the selected pattern has notes on rows that are currently hidden, a dialog offers **Restore Tracks** or **Keep As Is**. Restoring reveals only those hidden rows with notes; keeping them hidden means they are excluded from playback and WAV export. “Clear All” empties only the active pattern grid; it does not touch tracks.
+Only missing rows are added. Visibility is left untouched. If the selected pattern has notes on rows that are currently hidden, a dialog offers **Restore Tracks** or **Keep As Is**. Restoring reveals only those hidden rows with notes; keeping them hidden means they are excluded from playback and WAV export. “Clear All” empties only the active pattern grid; it does not touch tracks. The `↺` button in the Patterns panel restores the active factory pattern's notes without adding synth rows, changing row order or changing visibility; unmapped sample rows remain as empty rows, and Undo is offered in the toast.
 
 ## Kit dialog: assign, remove, unload and preview
 
