@@ -7,8 +7,12 @@
  * not create "workspace (2).json", "(3).json" etc.
  *
  * The last handle is kept in IndexedDB so the startup dialog can offer to
- * reopen it. Handles cannot be stored in localStorage.
+ * reopen it. Handles cannot be stored in localStorage. Browsers without the
+ * picker API still get a plain JSON download; it can be imported again, but
+ * there is no handle to write back to.
  */
+
+import { downloadBlob } from '../utils/file-output.js';
 
 const DB_NAME = 'zeeone_drum_machine';
 const STORE_NAME = 'workspace-files';
@@ -234,8 +238,14 @@ export class WorkspaceFileController {
   async save({ saveAs = false } = {}) {
     const desktop = getDesktopApi();
     if (!desktop && !hasPickerApi()) {
-      this.toast.show('Saving to a file requires Chrome or Edge (File System Access API).');
-      return false;
+      const name = (this.handle && this.handle.name) || 'zeeone_drum_workspace.json';
+      const blob = new Blob([this.serialize()], { type: 'application/json' });
+      if (!downloadBlob(blob, name)) {
+        this.toast.show('This browser cannot download the workspace file.');
+        return false;
+      }
+      this.toast.show(`Workspace downloaded: ${name} (open it to enable auto-save)`);
+      return true;
     }
 
     try {

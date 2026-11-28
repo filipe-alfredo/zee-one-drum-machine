@@ -88,6 +88,69 @@ test('pattern CRUD keeps the active pattern valid', () => {
   assert.equal(state.deletePattern(last.id), null);
 });
 
+test('restoring the active factory pattern leaves the kit and grid list untouched', () => {
+  const state = new AppState();
+  const factoryPattern = createDefaultWorkspace().patterns.find(item => item.id === 'pat_rock_1');
+  state.clearPattern('pat_rock_1');
+  state.setBpm(177);
+  state.setTimeSignature('3/4');
+
+  const kitsBefore = JSON.parse(JSON.stringify(state.workspace.kits));
+  const visibilityBefore = { ...state.workspace.visibleTracks };
+  const orderBefore = [...state.workspace.kits.trackOrder];
+  const result = state.restoreActiveFactoryPattern();
+
+  assert.equal(result.restored, 1);
+  assert.equal(state.activePattern.bpm, factoryPattern.bpm);
+  assert.equal(state.activePattern.timeSignature, factoryPattern.timeSignature);
+  assert.deepEqual(state.activePattern.grid.kick, factoryPattern.grid.kick);
+  assert.deepEqual(state.activePattern.grid.snare, factoryPattern.grid.snare);
+  assert.deepEqual(state.workspace.kits, kitsBefore);
+  assert.deepEqual(state.workspace.visibleTracks, visibilityBefore);
+  assert.deepEqual(state.workspace.kits.trackOrder, orderBefore);
+  assert.equal(state.workspace.activePatternId, 'pat_rock_1');
+
+  assert.equal(state.restorePatternState(result.snapshot), true);
+  assert.equal(state.activePattern.bpm, 177);
+  assert.equal(state.activePattern.timeSignature, '3/4');
+  assert.equal(state.activePattern.grid.kick.length, 12);
+  assert.equal(state.activePattern.grid.kick.some(Boolean), false);
+});
+
+test('factory restore is ignored for custom patterns', () => {
+  const state = new AppState();
+  const group = state.addGroup('Ideas');
+  const custom = state.addPattern({ name: 'Mine', groupId: group.id, bpm: 128 });
+  state.selectPattern(custom.id);
+  const gridBefore = JSON.parse(JSON.stringify(custom.grid));
+
+  assert.equal(state.isFactoryPattern(custom.id), false);
+  assert.deepEqual(state.restoreActiveFactoryPattern(), { restored: 0, snapshot: null });
+  assert.equal(state.activePattern.id, custom.id);
+  assert.equal(state.activePattern.bpm, 128);
+  assert.deepEqual(state.activePattern.grid, gridBefore);
+});
+
+test('factory restore keeps imported kit rows without adding synth tracks', () => {
+  const state = new AppState();
+  state.replaceKitSamples([{
+    id: 'smp_mystery',
+    instrumentId: '',
+    label: 'mystery',
+    data: 'data:audio/wav;base64,AAAA',
+  }]);
+  const kitsBefore = JSON.parse(JSON.stringify(state.workspace.kits));
+  const visibilityBefore = { ...state.workspace.visibleTracks };
+
+  assert.equal(state.restoreActiveFactoryPattern().restored, 1);
+  assert.equal(state.tracks.length, 1);
+  assert.deepEqual(state.workspace.kits, kitsBefore);
+  assert.deepEqual(state.workspace.visibleTracks, visibilityBefore);
+  assert.equal(state.activePattern.grid.kick[0], true);
+  assert.ok(Array.isArray(state.activePattern.grid.smp_mystery));
+  assert.equal(state.activePattern.grid.smp_mystery.some(Boolean), false);
+});
+
 test('visibility presets, mutes, solos, and volumes update independently', () => {
   const state = new AppState();
   state.applyVisibilityPreset(['kick', 'snare']);
@@ -147,8 +210,8 @@ test('workspace normalization keeps valid samples and drops invalid kit data', (
         label: 'snare 1',
         fileName: 'snare 1.wav',
         path: '../../unsafe/snare.wav',
-        kitId: 'vortex',
-        kitName: 'Vortex',
+        kitId: 'demo-kit',
+        kitName: 'Demo Kit',
         mimeType: 'audio/wav',
         data: 'data:audio/wav;base64,AAAA',
       },
@@ -181,9 +244,9 @@ test('import replaces the kit, clears the active pattern, and suffixes duplicate
     data: 'data:audio/wav;base64,AAAA',
     mimeType: 'audio/wav',
     fileName: 'snare.wav',
-    path: 'kits/vortex/snare.wav',
-    kitId: 'vortex',
-    kitName: 'Vortex',
+    path: 'kits/demo-kit/snare.wav',
+    kitId: 'demo-kit',
+    kitName: 'Demo Kit',
   };
 
   const result = state.replaceKitSamples([

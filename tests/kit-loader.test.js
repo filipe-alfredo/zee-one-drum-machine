@@ -9,9 +9,9 @@ test('filename matching is case-insensitive substring matching', () => {
   assert.equal(matchInstrumentByFilename('unknown.wav'), null);
 });
 
-test('bundled Vortex abbreviations are not auto-matched by keywords', () => {
-  assert.equal(matchInstrumentByFilename('KD_D_TMKD_Vortex_01.wav'), null);
-  assert.equal(matchInstrumentByFilename('SN_TMKD-Vortex_1.wav'), null);
+test('sample-pack abbreviations are not auto-matched by keywords', () => {
+  assert.equal(matchInstrumentByFilename('KD_D_Demo_01.wav'), null);
+  assert.equal(matchInstrumentByFilename('SN_Demo-1.wav'), null);
 });
 
 test('free-form labels resolve to the 23 instrument tracks', () => {

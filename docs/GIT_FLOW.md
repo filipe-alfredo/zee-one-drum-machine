@@ -32,6 +32,15 @@ git push --force-with-lease origin develop
 This rewrites `develop`. Do not run it if there is work on `develop` that has
 not already been released; open its PR first.
 
+## Tagging and Pages
+
+The public GitHub Pages site is deployed from a **published GitHub Release**, not from every push to `main`. The URL therefore always matches a versioned tag and the packaged app.
+
+1. After the release PR is merged and `develop` is resynced, tag `main`: `git tag -a v1.0.0 -m "Release v1.0.0" main` and `git push origin v1.0.0`.
+2. Publish a GitHub Release for that tag with release notes. The `pages` workflow re-runs the tests on that tag, then deploys it.
+3. Use `vMAJOR.MINOR.PATCH` tags. Published prereleases are allowed but should be treated as previews.
+4. To roll back, publish a release from an older tag; the deploy workflow replaces the site content.
+
 ## Branch rules
 
 | Branch | Role | Direct pushes |
