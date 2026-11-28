@@ -2,6 +2,14 @@
 
 Both export entry points — **File → Export Active Pattern...**, **File → Export Loop Arrangement...** and the loop toolbar's **Export Loop...** button — open the same modal before anything is rendered. The modal explains each format and then calls the existing save-target flow.
 
+## What you will see
+
+1. Pick a format. WAV is instant; M4A and MP3 take about the length of the audio because they encode through the browser or the vendored LAME module.
+2. Choose a folder and file name where a native picker exists. Firefox/Safari get a normal download with the suggested name instead.
+3. The render respects current visibility, mute, solo, per-track volume and master volume. A toast reports progress and the final file.
+
+M4A needs a Chromium-based browser (Chrome, Edge or Electron) with `audio/mp4;codecs=mp4a.40.2`. WAV and MP3 work in every browser supported by the app. The loop export crops its silent tail; the active-pattern export keeps its full length.
+
 ## Why WAV was rejected by WhatsApp Web
 
 `encodeWavBlob()` produces a valid RIFF/WAVE file: PCM signed 16-bit, stereo, 44.1 kHz, 44-byte header with coherent `fmt ` and `data` chunks. The rejection is a **codec policy**, not corruption, size or sample rate. WhatsApp Web accepts AAC/M4A, MP3, AMR and mono OGG/Opus as audio; WAV is not in that list.
@@ -21,7 +29,7 @@ MP3 encoding uses [LAME](https://lame.sourceforge.net/) through `@breezystack/la
 ## Pipeline
 
 1. The modal returns a format id (`wav`, `m4a`, `mp3`).
-2. `requestSaveTarget()` is called **immediately**, while the modal click is still an active user gesture. Electron shows a native dialog with `filters` for that extension; Chromium uses `showSaveFilePicker()` with the matching MIME type. There is no silent download fallback.
+2. `requestSaveTarget()` is called **immediately**, while the modal click is still an active user gesture. Electron shows a native dialog with `filters` for that extension; Chromium uses `showSaveFilePicker()` with the matching MIME type. Where neither API exists, the app falls back to a visible browser download with the suggested name — never a silent one.
 3. `renderAudioExport()` runs the existing `OfflineAudioContext` render once, then `trimAudioBuffer()` applies the loop's silent-tail crop for **all** formats.
 4. The chosen encoder turns that buffer into a Blob, and `writeSaveTarget()` writes it to the exact file selected in step 2.
 

@@ -3,6 +3,8 @@ import { getBeatGroupSize } from '../sequencer/pattern.js';
 import { getChannelVolume, isChannelAudible } from '../sequencer/mixer.js';
 import { createElement } from '../utils/dom.js';
 
+const TRACK_DRAG_TYPE = 'application/x-zeeone-track';
+
 export class SequencerGrid {
   constructor({
     state,
@@ -132,21 +134,38 @@ export class SequencerGrid {
     const isSolo = Boolean(this.state.workspace.solo[track.id]);
     const volumePercent = Math.round(getChannelVolume(this.state.workspace, track.id) * 100);
 
+    const dragGrip = createElement('span', {
+      className: 'track-drag-grip',
+      title: `Drag to reorder ${track.name}`,
+      attributes: {
+        draggable: 'true',
+        'aria-hidden': 'true',
+      },
+    });
+    dragGrip.addEventListener('click', event => event.stopPropagation());
+
     const header = createElement('div', {
       className: 'track-header' + (hasSample ? ' has-sample' : ''),
-      attributes: { draggable: 'true' },
+    });
+    dragGrip.addEventListener('dragstart', event => {
+      if (!event.dataTransfer) {
+        event.preventDefault();
+        return;
+      }
+      event.dataTransfer.effectAllowed = 'move';
+      event.dataTransfer.setData(TRACK_DRAG_TYPE, track.id);
+      event.dataTransfer.setData('text/plain', track.id);
+      header.classList.add('dragging');
+    });
+    dragGrip.addEventListener('dragend', () => {
+      header.classList.remove('dragging');
+      this.clearDropIndicators();
     });
 
     const nameWrap = createElement('div', {
       className: 'track-name-wrap',
-      title: `Click to audition ${track.name}; drag to reorder`,
+      title: `Click to audition ${track.name}; drag the grip to reorder`,
     });
-    const dragGrip = createElement('span', {
-      className: 'track-drag-grip',
-      title: `Drag to reorder ${track.name}`,
-      attributes: { 'aria-hidden': 'true' },
-    });
-    dragGrip.addEventListener('click', event => event.stopPropagation());
     nameWrap.append(
       dragGrip,
       createElement('span', { className: 'custom-dot', title: 'Custom sample loaded' }),
@@ -241,20 +260,6 @@ export class SequencerGrid {
       this.auditionInstrument(track, header);
     });
 
-    header.addEventListener('dragstart', event => {
-      if (event.target.closest('button, input, .track-name-resizer') || !event.dataTransfer) {
-        event.preventDefault();
-        return;
-      }
-      event.dataTransfer.effectAllowed = 'move';
-      event.dataTransfer.setData('text/plain', track.id);
-      header.classList.add('dragging');
-    });
-    header.addEventListener('dragend', () => {
-      header.classList.remove('dragging');
-      this.clearDropIndicators();
-    });
-
     return header;
   }
 
@@ -265,13 +270,17 @@ export class SequencerGrid {
   }
 
   bindRowReorder(row, track) {
+    const isTrackDrag = event => Boolean(
+      event.dataTransfer
+      && Array.from(event.dataTransfer.types || []).includes(TRACK_DRAG_TYPE),
+    );
     const isAfter = event => {
       const rect = row.getBoundingClientRect();
       return event.clientY > rect.top + rect.height / 2;
     };
 
     row.addEventListener('dragover', event => {
-      if (!event.dataTransfer) return;
+      if (!isTrackDrag(event)) return;
       event.preventDefault();
       event.dataTransfer.dropEffect = 'move';
       const after = isAfter(event);
@@ -282,9 +291,11 @@ export class SequencerGrid {
       row.classList.remove('drop-before', 'drop-after');
     });
     row.addEventListener('drop', event => {
+      if (!isTrackDrag(event)) return;
       event.preventDefault();
       row.classList.remove('drop-before', 'drop-after');
-      const sourceId = event.dataTransfer ? event.dataTransfer.getData('text/plain') : '';
+      const sourceId = event.dataTransfer.getData(TRACK_DRAG_TYPE)
+        || event.dataTransfer.getData('text/plain');
       if (!sourceId || sourceId === track.id) return;
       if (this.state.moveTrack(sourceId, track.id, isAfter(event))) {
         this.render();

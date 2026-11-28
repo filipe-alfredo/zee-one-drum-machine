@@ -411,6 +411,10 @@ export class AppState {
     return this.workspace.patterns.find(pattern => pattern.id === patternId) || null;
   }
 
+  isFactoryPattern(patternId) {
+    return FACTORY_PATTERNS.some(pattern => pattern.id === patternId);
+  }
+
   /**
    * Notify the workspace-file controller after a mutation. Persistence is
    * file-based: nothing is written here, and nothing is restored on startup.
@@ -936,6 +940,70 @@ export class AppState {
     ]);
     this.persist();
     return pattern;
+  }
+
+  /** Snapshot of one pattern, used to undo a factory restore. */
+  capturePatternState(patternId = null) {
+    const pattern = patternId ? this.getPattern(patternId) : this.activePattern;
+    if (!pattern) return null;
+    return {
+      id: pattern.id,
+      bpm: pattern.bpm,
+      timeSignature: pattern.timeSignature,
+      grid: cloneGrid(pattern.grid, [
+        ...this.trackPatternKeys,
+        ...Object.keys(pattern.grid || {}),
+      ]),
+    };
+  }
+
+  restorePatternState(snapshot) {
+    if (!snapshot || typeof snapshot !== 'object') return false;
+    const pattern = this.getPattern(snapshot.id);
+    if (!pattern) return false;
+
+    const timeSignature = isValidTimeSignature(snapshot.timeSignature)
+      ? snapshot.timeSignature
+      : '4/4';
+    pattern.timeSignature = timeSignature;
+    pattern.bpm = clampBpm(snapshot.bpm);
+    pattern.grid = normalizeGrid(snapshot.grid, getStepCountForSig(timeSignature), [
+      ...this.trackPatternKeys,
+      ...Object.keys(snapshot.grid || {}),
+    ]);
+    this.persist();
+    return true;
+  }
+
+  /**
+   * Restore only the active factory pattern's steps, BPM and signature. Kit
+   * tracks, row order, visibility, groups and custom patterns are untouched.
+   */
+  restoreActiveFactoryPattern() {
+    const pattern = this.activePattern;
+    const factory = pattern
+      ? FACTORY_PATTERNS.find(item => item.id === pattern.id)
+      : null;
+    if (!factory) return { restored: 0, snapshot: null };
+
+    const snapshot = this.capturePatternState(pattern.id);
+    const timeSignature = isValidTimeSignature(factory.timeSignature)
+      ? factory.timeSignature
+      : '4/4';
+    const totalSteps = getStepCountForSig(timeSignature);
+    pattern.timeSignature = timeSignature;
+    pattern.bpm = clampBpm(factory.bpm);
+    pattern.grid = normalizeGrid(
+      buildGridFromHits(factory.hits, totalSteps),
+      totalSteps,
+      [
+        ...this.trackPatternKeys,
+        ...ALL_INSTRUMENT_IDS,
+        ...Object.keys(pattern.grid || {}),
+      ],
+    );
+    this.persist();
+    return { restored: 1, snapshot };
   }
 
   setStep(rowKey, stepIndex, active) {

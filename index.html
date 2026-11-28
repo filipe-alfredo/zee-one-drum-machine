@@ -187,6 +187,12 @@
         <div class="sidebar-actions">
           <button class="mini-pill-btn accent-outline" id="btnNewGroup" title="Create new pattern group">+ Group</button>
           <button class="mini-pill-btn accent-outline" id="btnNewPattern" title="Create new pattern">+ Pattern</button>
+          <button class="mini-pill-btn mini-pill-btn--icon" id="btnRestoreActivePattern" title="Restore active factory pattern" aria-label="Restore active factory pattern">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M3 12a9 9 0 1 0 3-6.7" />
+              <polyline points="3 4 3 10 9 10" />
+            </svg>
+          </button>
           <button class="mini-pill-btn mini-pill-btn--icon" id="btnToggleHiddenGroups" title="Show hidden pattern groups" aria-label="Show hidden pattern groups" aria-pressed="false">
             <svg class="eye-open" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z" />
@@ -524,6 +530,7 @@
         <p><strong class="accent-strong">• Hide Tracks vs Clear All:</strong> <strong>Hide Tracks</strong> hides all drum rows on the right panel so you can build a minimal kit from scratch. <strong>Clear All</strong> erases the active notes on the current pattern. Neither removes imported samples.</p>
         <p><strong class="accent-strong">• New Workspace:</strong> The first toolbar button, <strong>New</strong>, starts either a blank grid (no visible tracks) or the 23-track default synth kit. The File menu has the same action.</p>
         <p><strong class="accent-strong">• Pattern Groups & Workspace:</strong> Collapse/expand or hide entire pattern groups in the left panel; the eye button under <strong>Patterns</strong> shows or hides the hidden groups. Click <strong>Save</strong> to export your entire Workspace (groups, patterns, visible tracks, and BPMs) to a <code>.json</code> file.</p>
+        <p><strong class="accent-strong">• Restore Active Pattern:</strong> The <strong>↺</strong> button beside <strong>+ Pattern</strong> restores the selected factory pattern's steps, BPM and time signature. It is disabled for custom patterns. Imported samples, visible grid rows, row order and other patterns are untouched; <strong>Undo</strong> is available in the toast.</p>
         <p><strong class="accent-strong">• Export Formats:</strong> <strong>Export Active Pattern</strong> and <strong>Export Loop</strong> ask for WAV, M4A or MP3. WAV is instant; M4A/AAC and MP3 are encoded locally in real time and are accepted by WhatsApp Web. The Save dialog then asks for the folder and file name, with the suggested name based on the pattern or loop settings.</p>
         <p><strong class="accent-strong">• Time Signature:</strong> Choose one of the fixed presets: <code>2/4</code>, <code>3/4</code>, <code>4/4</code>, <code>5/4</code>, <code>6/4</code>, <code>8/4</code>, or <code>12/4</code>.</p>
         <p><strong class="accent-strong">• Hidden Tracks:</strong> Selecting a pattern with notes on hidden tracks asks whether to restore them or keep them as they are. Hidden tracks are silent in playback and exports. The Tracks dialog previews a local draft: checkboxes change only that draft until you press <strong>Apply</strong>; <strong>Cancel</strong> discards it. Use <code>▶</code> to audition any piece.</p>

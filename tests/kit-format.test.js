@@ -12,8 +12,8 @@ test('buildKitConfig writes one sample path per instrument', () => {
     id: 'My Kit!',
     name: 'My Kit',
     assignments: [
-      { instrumentId: 'kick', fileName: 'KD_D_TMKD_Vortex_01.wav' },
-      { instrumentId: 'snare', fileName: 'SN_D_TMKD_Vortex_01.wav' },
+      { instrumentId: 'kick', fileName: 'KD_D_Demo_01.wav' },
+      { instrumentId: 'snare', fileName: 'SN_D_Demo_01.wav' },
       { instrumentId: 'not_an_instrument', fileName: 'ignored.wav' },
     ],
   });
@@ -24,12 +24,12 @@ test('buildKitConfig writes one sample path per instrument', () => {
     version: 1,
     instruments: {
       kick: {
-        file: 'samples/kick/KD_D_TMKD_Vortex_01.wav',
-        label: 'KD_D_TMKD_Vortex_01.wav',
+        file: 'samples/kick/KD_D_Demo_01.wav',
+        label: 'KD_D_Demo_01.wav',
       },
       snare: {
-        file: 'samples/snare/SN_D_TMKD_Vortex_01.wav',
-        label: 'SN_D_TMKD_Vortex_01.wav',
+        file: 'samples/snare/SN_D_Demo_01.wav',
+        label: 'SN_D_Demo_01.wav',
       },
     },
   });

@@ -1,6 +1,6 @@
 # Validation report
 
-Validation was performed after the refactor, the dynamic-track kit change, the resizable-panel/row-order additions, the Loop Arrangement redesign (vertical pattern rows, painted beat cells, and per-row BPM), the preview/visual refinements, the final maximized-Electron/loop-toolbar polish, and the WAV/M4A/MP3 export-format modal against a pristine baseline worktree containing the original single-file application (`git` baseline commit `dbdb8a5`). The app was served over HTTP (refactor on port 8765, baseline on 8766) and driven in headless Microsoft Edge through the Chrome DevTools Protocol. All validation servers are started and stopped by `run-all-status.mjs`; no server is left in `LISTENING` state.
+Validation was performed after the refactor, the dynamic-track kit change, the resizable-panel/row-order additions, the Loop Arrangement redesign (vertical pattern rows, painted beat cells, and per-row BPM), the preview/visual refinements, the final maximized-Electron/loop-toolbar polish, the WAV/M4A/MP3 export-format modal, the active-factory-pattern restore button, the grip-only Drum Grid reorder fix, and the no-picker download fallback against a pristine baseline worktree containing the original single-file application (`git` baseline commit `dbdb8a5`). The app was served over HTTP (refactor on port 8765, baseline on 8766) and driven in headless Microsoft Edge through the Chrome DevTools Protocol. All validation servers are started and stopped by `run-all-status.mjs`; no server is left in `LISTENING` state.
 
 Native file pickers cannot be automated in headless Edge, so persistence harnesses inject a small page-level stub for `showSaveFilePicker`, `showOpenFilePicker`, and IndexedDB. The stub writes to `sessionStorage`, which lets harnesses verify file names, overwrite behavior, and reload flows without touching real user files. Each harness launches Edge on a dynamically chosen debugging port so a new run cannot attach to a previous browser that is still shutting down.
 
@@ -9,7 +9,7 @@ Native file pickers cannot be automated in headless Edge, so persistence harness
 | Check | Result |
 | --- | --- |
 | `node --check` on every `src/**/*.js`, `tests/**/*.js`, `scripts/*.mjs` and `electron/*.cjs` file | All 57 files pass |
-| `npm test` (focused Node tests, including the maximized Electron shell, icon bundle, native workspace path bridge, save-target bridge, loop rows/blocks, saved row order, cropped WAV encoding, format descriptors and real MP3 frames) | **81/81 passed** |
+| `npm test` (focused Node tests, including the maximized Electron shell, icon bundle, native workspace path bridge, save-target bridge and no-picker download fallback, loop rows/blocks, saved row order, cropped WAV encoding, format descriptors, real MP3 frames and active factory restore with Undo) | **85/85 passed** |
 | Baseline browser regression harness (including polished flat toolbar buttons, crisp grid pads, softened BPM badges and slot-safe pad borders) | **29/29 passed** |
 | Extended browser harness (checkbox draft, sample removal/Undo) | **16/16 passed** |
 | Kit import wizard harness | **16/16 passed** |
@@ -19,14 +19,18 @@ Native file pickers cannot be automated in headless Edge, so persistence harness
 | Workspace file persistence harness | **11/11 passed** |
 | Workspace actions harness (New chooser, named WAV export) | **7/7 passed** |
 | Export formats harness (modal options/descriptions, cancel and Escape, WAV/M4A/MP3 file headers and save-dialog metadata, cropped loop MP3) | **9/9 passed** |
-| Resize + row-order harness (sidebar/loop and kit-name dividers, click-to-fit, keyboard, drag/drop, saved order) | **20/20 passed** |
+| No-picker fallback harness (startup Open via file input, workspace JSON blob download, WAV blob download, no runtime errors) | **5/5 passed** |
+| Active factory restore harness (enabled only for factory patterns, confirmation, steps/BPM/signature restored, grid rows unchanged, Undo) | **7/7 passed** |
+| Resize + row-order harness (sidebar/loop and kit-name dividers, click-to-fit, keyboard, grip-only drag/drop, volume-drag rejection, saved order) | **21/21 passed** |
 | Electron smoke + Windows build | Source shell and packaged `app.asar` load with the ZeeOne icon and native workspace bridge; maximized startup asserted in Node; NSIS installer + portable `.exe` generated in `dist/` |
 | Visual/computed-style comparison at 1440×900 | **0 computed-style differences, 0 / 1,296,000 changed pixels** |
 | Bundled font loading (Inter, JetBrains Mono, Orbitron, Rajdhani) | All four loaded locally on both pages |
-| Local WAV fixture decoding | Two fixtures decoded at 44.1 kHz |
+| Synthetic WAV fixture decoding | Two generated 44.1 kHz PCM fixtures decoded by the browser; no dependency on `assets/drumkits/**` |
 | Console/runtime errors | None in any browser run |
 
-The Node tests cover fixed-preset step counts and timing formulas, the short time-signature error message, grid transforms with arbitrary row keys, workspace defaults/normalization (including the v2 `kits` schema with `trackOrder` and legacy v1 upgrades), BPM/volume clamping, pattern/group CRUD, loop grid defaults/normalization/legacy migration/limits, painted-block duration, timeline growth, per-row BPM events, clear and row CRUD, workspace persistence, change notification and factory reset, mute/solo/visibility/volume rules, dynamic track derivation, kit replacement/clearing and duplicate labels, hidden-track detection and restoration, synth restoration for factory patterns, saved row reordering (normalization, Undo and unchanged pattern keys), free-label instrument resolution, base64 sample-data round-trips and ZIP path sanitization, pattern/loop WAV filenames, 16-bit PCM WAV headers (including a partial frame count for a cropped loop tail), CRC32, stored/deflated ZIP round-trips, the legacy `kit.json` helpers, the Electron shell order (`show: false` → `maximize()` → `show()` with no native menu), its multi-size icon bundle, and the Electron workspace bridge (native Save/Open, remembered path, native-path auto-save and Open Last after restart).
+The browser harnesses generate their own WAV bytes in-page and never read, copy or recreate `assets/drumkits/**`. That folder remains local user content, is gitignored and is excluded from any published or packaged output.
+
+The Node tests cover fixed-preset step counts and timing formulas, the short time-signature error message, grid transforms with arbitrary row keys, workspace defaults/normalization (including the v2 `kits` schema with `trackOrder` and legacy v1 upgrades), BPM/volume clamping, pattern/group CRUD, active factory-pattern restore with snapshot Undo and no kit/visibility changes, loop grid defaults/normalization/legacy migration/limits, painted-block duration, timeline growth, per-row BPM events, clear and row CRUD, workspace persistence, change notification and factory reset, mute/solo/visibility/volume rules, dynamic track derivation, kit replacement/clearing and duplicate labels, hidden-track detection and restoration, synth restoration for factory patterns, saved row reordering (normalization, Undo and unchanged pattern keys), free-label instrument resolution, base64 sample-data round-trips and ZIP path sanitization, pattern/loop WAV filenames, 16-bit PCM WAV headers (including a partial frame count for a cropped loop tail), CRC32, stored/deflated ZIP round-trips, the legacy `kit.json` helpers, the Electron shell order (`show: false` → `maximize()` → `show()` with no native menu), its multi-size icon bundle, and the Electron workspace bridge (native Save/Open, remembered path, native-path auto-save and Open Last after restart, all driven by virtual in-memory paths), and the no-picker workspace/export download fallback.
 
 ## Browser regression coverage (baseline harness)
 
@@ -89,7 +93,7 @@ The Node tests cover fixed-preset step counts and timing formulas, the short tim
 - The Drum Grid name column starts at `320px` (280 px below 860 px) so all factory names fit without clipping. Each header has a visible zero-width grip: dragging it right by 60 px widens all headers and the LED bar together to `380px` and grows the name area from 138 px to 198 px; a click or `Enter` fits a custom long name (420 px in the harness), double-click restores `320px`, arrow keys step to `330px`, and `Home` resets. `aria-valuenow` follows the shared size.
 - Double-click restores each divider (`315px` / `176px`); focused arrow keys step by 10 px in the panel's natural direction (Shift uses 40 px), and `Home` resets. The collapsed state blocks dragging.
 - Neither divider nor the kit-name handle writes to the workspace JSON: the saved file contains no `315px`, `176px` or `320px` visual sizes, matching the collapse behavior.
-- A synthetic drag from the first Drum Grid header onto the third row shows a visible orange `drop-after` inset shadow, moves the row, and saves the new `kits.trackOrder` while leaving every pattern grid byte-for-byte unchanged. The resized name handle does not start a row reorder.
+- A synthetic drag from the first Drum Grid grip (⠿) onto the third row shows a visible orange `drop-after` inset shadow, moves the row, and saves the new `kits.trackOrder` while leaving every pattern grid byte-for-byte unchanged. A synthetic drag from the volume slider sets no private drag type, shows no drop indicator and leaves the row order unchanged; the resized name handle likewise does not start a row reorder.
 - All 20 checks run with no console or runtime errors. The Node state tests additionally verify normalization, Undo, legacy workspaces without `trackOrder`, and rejection of unknown/self moves.
 
 ## Loop panel coverage
@@ -132,7 +136,7 @@ The Node tests cover fixed-preset step counts and timing formulas, the short tim
 - **Blank Grid** leaves 0 rows / 0 pads but keeps all 24 factory patterns; **Default Kit** restores 23 synth rows and 368 pads.
 - **Export Active Pattern** requests a destination before rendering and writes `zeeone_rock_1_100bpm.wav` with a RIFF/WAVE header and the reported file name in the toast.
 - The File menu and loop panel both route every chosen format through the same save chooser; no runtime or console errors occur.
-- With neither the Electron bridge nor `showSaveFilePicker()` available, `requestSaveTarget()` rejects with a clear error and `writeSaveTarget()` refuses unsupported targets. No `<a download>` fallback exists, so exports can no longer create `... (2)`, `(3)` copies in `Downloads`.
+- With neither the Electron bridge nor `showSaveFilePicker()` available, `requestSaveTarget()` returns a download target and `writeSaveTarget()` writes the exact blob through a temporary `<a download>`. Unit tests assert the suggested file name, blob bytes and success toast; the native/picker paths are unchanged and still allow choosing a folder.
 
 ## Electron desktop coverage
 
@@ -172,9 +176,9 @@ The comparison navigated both servers at the same viewport, captured computed st
 - Prevented cross-harness browser collisions by giving each headless Edge instance its own debugging port.
 - Added a toolbar/File-menu **New** chooser for blank-grid or default-kit workspaces, distinct from the startup dialog.
 - Changed both WAV exports to ask for folder and file name first, then write through Electron/native or File System Access APIs instead of silently downloading.
-- Removed the silent `<a download>` fallback entirely: unsupported browsers now show an explicit save-API error instead of creating numbered duplicates in `Downloads`.
+- Replaced the unsupported-browser save-API error with an explicit `<a download>` fallback: exports and workspace JSON still download with the suggested name, while Electron/picker paths keep their native chooser.
 - Added an Electron main process with a random-port local server and a narrow native-save preload bridge, plus Windows installer/portable build scripts.
-- Moved the **Patterns** title to the left with its collapse chevron at the far right, put the three pattern actions on their own line, replaced the Hidden label with an open/closed eye button, moved the top-bar chevron after the workspace status, and removed the four preset buttons from the Tracks dialog.
+- Moved the **Patterns** title to the left with its collapse chevron at the far right, put the pattern actions on their own line, replaced the Hidden label with an open/closed eye button, moved the top-bar chevron after the workspace status, and removed the four preset buttons from the Tracks dialog.
 - Replaced the lane/bar block timeline with one eternal pattern sequence: rows are added with **+ Pattern**, removed with ✕/**Remove Pattern**, reordered by drag/drop, and played once at their natural beats (so 8/4 is no longer compressed into 4/4). The Bars, Loop bars and Lane controls were removed; loop WAV now exports one cycle named in beats/BPM, and legacy workspaces are migrated on load.
 - Added drag-to-resize dividers for the pattern sidebar, loop arrangement and Drum Grid kit-name column with keyboard and double-click reset; all remain visual-only and are excluded from the workspace JSON.
 - Added Drum Grid row drag/drop with drop indicators and a saved `kits.trackOrder`, keeping pattern keys stable so factory notes still play on the same tracks.
@@ -198,7 +202,7 @@ The comparison navigated both servers at the same viewport, captured computed st
 - M4A encoding runs in real time, so a long loop takes roughly its own duration to export. MP3 relies on a vendored LGPL LAME module instead of a browser-native encoder.
 - Only one sample is stored per track; importing a ZIP replaces all tracks and clears the active pattern's steps. Individual samples can be removed with **Use Synth / Remove**, and the whole kit with **Unload All Samples**, both undoable.
 - Workspace files with embedded samples can become large.
-- Workspace write-back still requires Chrome/Edge or the Electron build; other browsers keep the JSON import fallback but cannot write back.
+- Auto-save to an existing file still requires Chrome/Edge or the Electron build. Other browsers download a fresh workspace JSON on **Save** and can reopen it through the toolbar **Open** button, but there is no writable handle to update in place.
 - Opening `index.html` directly via `file://` is blocked by ES Module CORS rules; use `npm start` or the Electron app.
 
 ## Electron status
